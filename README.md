@@ -24,3 +24,5 @@ The frequency-ordered list will scroll automatically to display the word closest
 
 ## Annotations and illustrations
 When you are telling a story, you can use pictures to supplement the text. Pictures allow you to "say" things that are more complex than a limited vocabulary allows. You can include annotations [inside square brackets]. The words inside square brackets will not be coloured. You can use this feature to provide information to an artist about the illustrations you would like to see. You can also provide URLs to images you consider suitable or relevant.
+
+[More details are available on the Wiki.](https://github.com/lexogram/graded-writing/wiki)

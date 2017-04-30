@@ -1,4 +1,4 @@
-# Graded Writing
+# Graded Writer
 A web app to help you write using a vocabulary limited to the most common words
 
 ## Purpose

@@ -1,6 +1,8 @@
 # Graded Writer
 A web app to help you write using a vocabulary limited to the most common words
 
+[Test the Graded Writer app](https://lexogram.github.io/graded-writer/)
+
 ## Purpose
 When writing for people who have started learning your language, you want to limit your vocabulary to the most common words. This app connects to a database which stores information about words and their usage statistics. As you type, it provides feedback, colouring your words according to how well they fit into the target that you have set for this particular piece.
 s

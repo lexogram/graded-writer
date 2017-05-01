@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+  <meta charset="utf-8">
+  <title>Graded Writer</title>
+
+  <link rel="stylesheet" type="text/css" href="css/style.css">
+</head>
+
+<body>
+
+  <div id="controls">
+    <form>
+      <label for="target">Target</label>
+      <input class="target" type="range"/>
+      <input class="target" id="target" type="text"/>
+    </form>
+
+    <div id="feedback">
+      <div id="acceptable">
+        <p>Acceptable</p>
+        <ul>
+        </ul>
+      </div>
+
+      <div id="out-of-range">
+        <p>Out of range</p>
+        <ul>
+        </ul>
+      </div>
+
+      <div id="frequency">
+        <p>10,000 Most Common</p>
+        <ol>
+          <li>This</li>
+          <li>is</li>
+          <li>not</li>
+          <li>acceptable</li>
+          <li>here</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/script.js"></script>
+</body>
+</html>

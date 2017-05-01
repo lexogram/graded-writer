@@ -1,0 +1,75 @@
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0; 
+  position: relative;
+} 
+
+#controls {
+  position: absolute;
+  right: 0;
+  /*background-color: #ccf;*/
+  height: 100%;
+  width: 25em;
+}
+
+#controls div{
+  position: absolute;
+  width: 12.5em;
+  height: 100%; 
+}
+
+form {
+  background-color: rgba(255,255,0,0.1);
+}
+
+#feedback p {
+  height: 1em;
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.2em;
+  margin: 0.7em 0;
+}
+
+div#feedback{
+  /*position:absolute;
+  background-color: rgba(0,255,0,0.1);*/
+  width: 100%;
+  top: 3em;
+  height: calc(100% - 3em);
+}
+
+ul,
+ol { 
+  height: calc(100% - 3em);
+  width: 10em;
+  overflow-y: auto;
+  margin: 0;
+}
+
+ul {
+  list-style: none;
+  left: 0;
+}
+
+div#acceptable{
+  /*background-color: rgba(255,0,0,0.1);*/
+  height: 85%;
+}
+
+div#out-of-range{
+  top: 85%;
+  height: 15%;
+  background-color: #fee;
+}
+#out-of-range p {
+  color: #800;
+}
+
+#frequency{
+  right: 0;
+  /*background-color: rgba(0,0,0,0.1);*/
+}
+

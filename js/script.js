@@ -7,115 +7,263 @@
   var targetRange = document.querySelector(".target[type='range']")
   var targetField = document.querySelector(".target[type='text']")
   var target = 500
-  var shiftDown = false;
 
-  document.addEventListener('keydown', checkShift, false)
-  document.addEventListener('keyup', checkShift, false)
+  function colourItem(index, li) {
+    var red
 
-  function checkShift(event) {
-    shiftDown = event.shiftKey
+    if (index > target) {
+
+      red = Math.max(index - target, 0)
+      red = Math.floor(red * 255 / target)
+      red = Math.min(red, 255)
+      red = red < 16 ? "0" + red.toString(16)
+                     : red.toString(16)
+      red = "#" + red + "0000"
+    } else {
+      red = "#000"
+    }
+
+    li.style.color = red
   }
 
+  /* WORD LISTS*/
+    // Hack to check when user is pressing Shift while dragging slider
+    var shiftDown = false;
+    document.addEventListener('keydown', checkShift, false)
+    document.addEventListener('keyup', checkShift, false)
 
-  ;(function createFrequencyList(){
-    var total = orderedList.length
-    var ii
-      , li
-    
-    for (ii = 0; ii < total; ii += 1) {
-      li = document.createElement("li")
-      li.appendChild(document.createTextNode(orderedList[ii]))
-      ol.appendChild(li)
-    }
-  })()
-
-  ;(function initializeTarget(){
-    var max = orderedList.length / 2
-    var value = Math.min(max, target)
-    var step = 250
-
-    targetRange.min = step
-    targetRange.max = max
-    targetRange.value = value
-    targetField.value = value
-
-    targetRange.oninput = function showValue(event) {
-      step = shiftDown ? 50 : 250
-
-      value = Math.floor(this.value / step) * step
-      targetField.value = value
+    function checkShift(event) {
+      shiftDown = event.shiftKey
     }
 
-    targetRange.onchange = function update() {
-      setTarget(value)
-    }
-  })()
-
-  setTarget(target)
-
-  function setTarget(value) {
-    target = value
-
-    colourMostCommon(target)
-    createAcceptableList(target)
-
-    function colourItem(index, li) {
-      var red
-
-      if (index > target) {
-
-        red = Math.max(index - target, 0)
-        red = Math.floor(red * 255 / target)
-        red = Math.min(red, 255)
-        red = red < 16 ? "0" + red.toString(16)
-                       : red.toString(16)
-        red = "#" + red + "0000"
-      } else {
-        red = "#000"
-      }
-
-      li.style.color = red
-    }
-
-    function colourMostCommon(target) {
-      var items = ol.querySelectorAll("li")
-      var total = items.length
-      var ii
-    
-      for (ii = 0; ii < total; ii += 1) {
-        colourItem(ii, items[ii])
-      }
-    }
-
-    function createAcceptableList(target) {
-      var accepted = []
-      var total = target * 2
+    ;(function createFrequencyList(){
+      var total = orderedList.length
       var ii
         , li
-        , word
-        , index
-
-      while (acceptable.hasChildNodes()) {
-        acceptable.removeChild(acceptable.lastChild);
-      } 
-      
-      for (ii = 0; ii < total; ii += 1) {
-        accepted.push(orderedList[ii])
-      }
-
-      accepted.sort()
       
       for (ii = 0; ii < total; ii += 1) {
         li = document.createElement("li")
-        word = accepted[ii]
-        li.appendChild(document.createTextNode(word))
+        li.appendChild(document.createTextNode(orderedList[ii]))
+        ol.appendChild(li)
+      }
+    })()
 
-        index = orderedList.indexOf(word)
-        colourItem(index, li)
+    ;(function initializeTarget(){
+      var max = orderedList.length / 2
+      var value = Math.min(max, target)
+      var step = 250
 
-        acceptable.appendChild(li)
+      targetRange.min = step
+      targetRange.max = max
+      targetRange.value = value
+      targetField.value = value
+
+      targetRange.oninput = function showValue(event) {
+        step = shiftDown ? 50 : 250
+
+        value = Math.floor(this.value / step) * step
+        targetField.value = value
+      }
+
+      targetRange.onchange = function update() {
+        setTarget(value)
+      }
+    })()
+
+    setTarget(target)
+
+    function setTarget(value) {
+      target = value
+
+      colourMostCommon(target)
+      createAcceptableList(target)
+
+      function colourMostCommon(target) {
+        var items = ol.querySelectorAll("li")
+        var total = items.length
+        var ii
+    
+        for (ii = 0; ii < total; ii += 1) {
+          colourItem(ii, items[ii])
+        }
+      }
+
+      function createAcceptableList(target) {
+        var accepted = []
+        var total = target * 2
+        var ii
+          , li
+          , word
+          , index
+
+        while (acceptable.hasChildNodes()) {
+          acceptable.removeChild(acceptable.lastChild);
+        } 
+        
+        for (ii = 0; ii < total; ii += 1) {
+          accepted.push(orderedList[ii])
+        }
+
+        accepted.sort()
+        
+        for (ii = 0; ii < total; ii += 1) {
+          li = document.createElement("li")
+          word = accepted[ii]
+          li.appendChild(document.createTextNode(word))
+
+          index = orderedList.indexOf(word)
+          colourItem(index, li)
+
+          acceptable.appendChild(li)
+        }
       }
     }
-  }
+  /* END OF WORD LISTS*/
 
+  /* INPUT */
+  ;(function initializeInput(){  
+    var input = document.querySelector("#input textarea")
+    var overlay = document.querySelector("#input p")
+    var _W = /[\s!-\/:-@[-`{-~\u00A0-¾—-⁊$]/ // any non-word character
+                                           // 
+    var textMap = {0: ""}
+    var wordBorderArray = [0] 
+    var oldLength = 0 // wordBorderArray[wordBorderArray.length - 1
+                      // ]
+    var selection = [0, 0]
+    var overlayNodes = []
+    var lastType = null // "word" | "non-word" | "linebreak"
+
+    // input.onkeydown = storeSelection
+    // input.onkeyup = checkWord
+    // input.onmouseup = scrollLists
+
+    function storeSelection(event) {
+      selection[0] = input.selectionStart
+      selection[1] = input.selectionEnd
+    }
+
+    function checkWord(event) {
+      var key = event.key  
+      var ignore
+        , caret
+        , text
+        , newLength
+        , thisType
+        , action
+        , wordIndex
+
+      ignore = key.length !== 1 // may be "Control" or "Shift"
+            || event.altKey
+            || event.ctrlKey
+            || event.metaKey
+
+      if (ignore) {   
+        return
+      }
+
+      caret = input.selectionStart // after keyup === selectionEnd
+      text = input.value
+      newLength = text.length
+
+      thisType = (function checkType() {
+        switch (event.keyCode){
+          case 13:
+            return "linebreak"
+          case 8: // fallthrough
+          case 46:
+            return "delete"
+          default:
+            return _W.test(key)
+            ? "non-word"
+            : "word"
+        }
+      })() // "word | "non-word" |"linebreak" | "delete"
+           
+      action = (function CheckAction() {
+        if (caret = selection[0]) {
+          // No new character added
+          return "delete"
+        } else if (selection[0] === selection[1]) {
+          // Selection was empty
+          if (newLength > oldLength) { 
+            return "insert"
+          }
+        }
+        
+        // Either [Insert] function is not active, and the next
+        // character was overwritten, or there was a selection which
+        // has been replaced by the input character
+        return "replace"
+      })() // "insert" | "replace" | "delete"
+
+      if (action !== "insert") {
+        deleteStuff()
+      }
+     
+      if (thisType !== lastType){
+        wordIndex = startNewTag(thisType, key)
+        lastType = thisType
+
+      } else {
+        updateTag()
+      }
+
+      if (wordIndex && lastType === "word" && thisType !== "word") {
+        // Check if chenk at wordIndex is an acceptable word
+        colourItem(wordIndex) 
+      }
+    }
+
+
+    function deleteStuff(argument) {
+
+    }
+
+    function startNewTag(tagType, key) {
+      var tag
+        , nodeIndex
+
+      if (tagType === "linebreak") {
+        tag = document.createElement("br")
+
+      } else {
+        tag = document.createElement("span")
+        tag.appendChild(document.createTextNode(key))
+      }
+
+      nodeIndex = getNodeIndex()
+      overlay.insertBefore(tag, overlay.childNodes[nodeIndex])
+    }
+
+
+    function getNodeIndex() {
+      var nodeIndex = 0
+      var selectionEnd = selection[1]
+
+      while (wordBorderArray[nodeIndex] < selectionEnd) {
+        nodeIndex += 1
+      }
+
+      return nodeIndex
+    }
+
+    function updateTag() {
+      // INSERT key AT APPROPRIATE PLACE IN CURRENT SPAN
+      // colourSpan(wordIndex) 
+    }
+
+    function colourSpan(wordIndex) {
+      var word = textMap[wordBorderArray[overlayNodes]]
+      var frequencyIndex = orderedList.indexOf(word)
+      var span = overlayNodes[wordIndex]
+
+      colourItem(frequencyIndex, span)
+    }
+
+    function scrollLists(event) {
+
+    }
+  })()
+  /* END OF INPUT */
 })()

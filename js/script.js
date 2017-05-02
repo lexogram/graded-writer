@@ -6,6 +6,7 @@
   var acceptable = document.querySelector("#acceptable ul")
   var targetRange = document.querySelector(".target[type='range']")
   var targetField = document.querySelector(".target[type='text']")
+  var highLitLi = 0
   // Regex
   var _rn = /[\r|\r\n|\n]/ // line break on any platform
   var _W = /[\s!-\/:-@[-`{-~\u00A0-¾—-⁊$]/ // any non-word character
@@ -150,6 +151,45 @@
         }
       }
     }
+
+    function scrollLists(word) {
+      var frequencyIndex = orderedList.indexOf(word)
+      
+      if (frequencyIndex < 0) {
+        // No such word: we can't scroll to it.
+        // TO DO: Show an alert in the toolbar?
+        return
+      }
+      
+      if (highLitLi) {
+        highLitLi.classList.remove("highlight")
+      }
+      highLitLi = ol.children[frequencyIndex]
+
+      scrollIntoView(highLitLi)
+    } 
+
+    function scrollIntoView(node) {
+      var rect = node.getBoundingClientRect()
+      var top  = rect.top
+      var bottom = rect.bottom
+
+      var parentNode = node.parentNode
+      var parentRect = parentNode.getBoundingClientRect()
+      var topAdjust = parentRect.top - top
+      var adjust = parentRect.bottom - bottom
+
+      if (topAdjust > 0) {
+        adjust = topAdjust
+        parentNode.scrollTop -= adjust
+
+      } else if (adjust < 0) {
+        adjust = Math.max(adjust, topAdjust)
+        parentNode.scrollTop -= adjust
+      }
+
+      highLitLi.classList.add("highlight")
+    }
   /* END OF WORD LISTS*/
 
   /* INPUT */
@@ -173,6 +213,11 @@
     function updateInputContext(event) {
       var before = getInsertionContext(input.selectionStart)
       var after  = getInsertionContext(input.selectionEnd, true)
+      // We don't want the frequency list to scroll if the user is
+      // simply starting a new word
+      var isKeyInput = event
+                    && event.type === "keyup" 
+                    && event.key.length === 1
 
       inputContext = {
         before: before
@@ -180,7 +225,7 @@
       , selectCount: input.selectionEnd - input.selectionStart
       } 
 
-      refreshDisplay()
+      refreshDisplay(isKeyInput)
 
       /**
        * Gets the insertion context, either for the text preceding
@@ -273,7 +318,7 @@
 
     function treatKeyUp(event) {
       postProcessKeyUp()
-      updateInputContext()
+      updateInputContext(event)
 
       function postProcessKeyUp() {
         var key = event.key  
@@ -522,7 +567,7 @@
         })
     }
 
-    function refreshDisplay(event) {
+    function refreshDisplay(isKeyInput) {
       var activeNodeIndex = inputContext.before.node
       var activeKey
         , activeText
@@ -530,7 +575,12 @@
         , activeWordText
 
       if (activeNodeIndex === activeWordIndex) {
-        removeSpanStyle(activeWordIndex)
+        if (activeNodeIndex < 0) {
+          // We're just starting up. Nothing to do.
+        } else if (isKeyInput) {
+          removeSpanStyle(activeWordIndex)
+        }
+
         return
       }
 
@@ -540,7 +590,7 @@
 
       if (activeWordIndex === -1) {
         // We haven't just left a word, but we might have entered one
-        activeWordIndex = activeNodeIndex
+        setActiveWordIndex(activeNodeIndex, isKeyInput)
         return
       }
 
@@ -549,15 +599,24 @@
       scrollLists(activeWordText)
       setColour(activeWordIndex, activeWordText)
 
-      activeWordIndex = outsideWord ? -1 : activeNodeIndex
+      setActiveWordIndex(outsideWord ? -1 : activeNodeIndex)
+
+      function setActiveWordIndex(nodeIndex, dontScroll) {
+        var index = nodeIndex < 0 ? activeWordIndex : nodeIndex
+        var nodeKey = wordBorderArray[index]
+        var word = textMap[nodeKey]
+
+        if (!dontScroll) {
+          scrollLists(word)
+        }
+
+        activeWordIndex = nodeIndex
+      }
 
       function removeSpanStyle(nodeIndex) {
         var span = overlayNodes[nodeIndex]
         span.style.color = null
       }
-
-      function scrollLists(activeText) {
-      } 
 
       function setColour(nodeIndex, word) {
         var span = overlayNodes[nodeIndex]

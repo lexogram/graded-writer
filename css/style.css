@@ -34,7 +34,7 @@ body {
   padding: 1em;
   margin: 0;
   font-size: 1.2em;
-  font-family: serif;
+  font-family: monospace;
 }
 
 #input textarea {
@@ -43,9 +43,10 @@ body {
 
 #input p{
   position:relative;
-  top: calc(2.8em - 100%);
+  top: calc(43px - 100%);
   background-color: rgba(255,0,0,0.1);
   pointer-events: none;
+  white-space:pre-wrap;
 
   color: green;
 }

@@ -6,10 +6,13 @@
   var acceptable = document.querySelector("#acceptable ul")
   var targetRange = document.querySelector(".target[type='range']")
   var targetField = document.querySelector(".target[type='text']")
+  var overlayNodes = []
   var highLitLi = 0
+
   // Regex
   var _rn = /[\r|\r\n|\n]/ // line break on any platform
   var _W = /[\s!-\/:-@[-`{-~\u00A0-¾—-⁊$]/ // any non-word character
+
   // Default
   var target = 500
 
@@ -108,10 +111,11 @@
     function setTarget(value) {
       target = value
 
-      colourMostCommon(target)
+      colourFrequencyList(target)
       createAcceptableList(target)
+      updateInputColours(target)
 
-      function colourMostCommon(target) {
+      function colourFrequencyList(target) {
         var items = ol.querySelectorAll("li")
         var total = items.length
         var ii
@@ -148,6 +152,26 @@
           colourItem(index, li)
 
           acceptable.appendChild(li)
+        }
+      }
+
+      function updateInputColours(target) {
+        var total = overlayNodes.length
+        var ii
+          , node
+          , text
+          , frequencyIndex
+        
+        for (ii = 0; ii < total; ii += 1) {
+          node = overlayNodes[ii]
+          text = node.textContent
+          frequencyIndex = orderedList.indexOf(text)
+
+          if (frequencyIndex < 0) {
+            // This may be a non-word, a <br> or an unknown word
+          } else {
+            colourItem(frequencyIndex, node)
+          }
         }
       }
     }
@@ -203,7 +227,6 @@
 
     var activeWordIndex = -1
     var inputContext = {}
-    var overlayNodes = []
 
     input.onmouseup = updateInputContext
     input.onkeyup = treatKeyUp

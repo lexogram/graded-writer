@@ -62,6 +62,10 @@
     li.style.color = red
   }
 
+  function getFrequency(word) {
+    return orderedList.indexOf(word.toLowerCase())
+  }
+
   /* WORD LISTS*/
     // Hack to check when user is pressing Shift while dragging slider
     var shiftDown = false;
@@ -148,7 +152,7 @@
           word = accepted[ii]
           li.appendChild(document.createTextNode(word))
 
-          index = orderedList.indexOf(word)
+          index = getFrequency(word)
           colourItem(index, li)
 
           acceptable.appendChild(li)
@@ -165,7 +169,7 @@
         for (ii = 0; ii < total; ii += 1) {
           node = overlayNodes[ii]
           text = node.textContent
-          frequencyIndex = orderedList.indexOf(text)
+          frequencyIndex = getFrequency(text)
 
           if (frequencyIndex < 0) {
             // This may be a non-word, a <br> or an unknown word
@@ -177,7 +181,7 @@
     }
 
     function scrollLists(word) {
-      var frequencyIndex = orderedList.indexOf(word)
+      var frequencyIndex = getFrequency(word)
       
       if (frequencyIndex < 0) {
         // No such word: we can't scroll to it.
@@ -478,7 +482,8 @@
         var split = text.substring(charIndex)
         var text = text.substring(0, charIndex)
         var node = overlayNodes[nodeIndex]
-        var tag = document.createTextNode(text)
+        var tag = document.createElement("span")
+        tag.appendChild(document.createTextNode(text))
 
         node.textContent = split
 
@@ -643,7 +648,7 @@
 
       function setColour(nodeIndex, word) {
         var span = overlayNodes[nodeIndex]
-        var frequencyIndex = orderedList.indexOf(word)
+        var frequencyIndex = getFrequency(word)
 
         colourItem(frequencyIndex, span)
       }

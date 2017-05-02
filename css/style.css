@@ -38,13 +38,14 @@ body {
 }
 
 #input textarea {
-  background-color: rgba(0,0,0,0.1);
+  /*background-color: rgba(0,0,0,0.1);*/
+  /*color: rgba(0,0,0,0);*/
 }
 
 #input p{
   position:relative;
   top: calc(43px - 100%);
-  background-color: rgba(255,0,0,0.1);
+  /*background-color: rgba(255,0,0,0.1);*/
   pointer-events: none;
   white-space:pre-wrap;
 }

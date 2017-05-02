@@ -39,6 +39,10 @@
   function colourItem(index, li) {
     var red
 
+    if (index < 0) {
+      index = orderedList.length
+    }
+
     if (index > target) {
 
       red = Math.max(index - target, 0)
@@ -149,23 +153,24 @@
   /* END OF WORD LISTS*/
 
   /* INPUT */
-  ;(function treatInput(){  
+  ;(function treatInput() {
     var input = document.querySelector("#input textarea")
     var overlay = document.querySelector("#input p")
                                            // 
     var textMap = {0: ""}
     var wordBorderArray = [0] 
-    var oldLength = 0 // wordBorderArray[wordBorderArray.length - 1
-                      // ]
+    var oldLength = 0   
+
+    var activeWordIndex = -1
     var inputContext = {}
     var overlayNodes = []
-    var lastType = null // "word" | "non-word" | "linebreak"
 
-    input.onkeydown = storeInputContext
-    input.onkeyup = checkWord
-    input.onmouseup = scrollLists
+    input.onmouseup = updateInputContext
+    input.onkeyup = treatKeyUp
 
-    function storeInputContext(event) {
+    updateInputContext()
+
+    function updateInputContext(event) {
       var before = getInsertionContext(input.selectionStart)
       var after  = getInsertionContext(input.selectionEnd, true)
 
@@ -173,101 +178,196 @@
         before: before
       , after:  after
       , selectCount: input.selectionEnd - input.selectionStart
+      } 
+
+      refreshDisplay()
+
+      /**
+       * Gets the insertion context, either for the text preceding
+       * charIndex (if isAfter is falsy), or for the text following.
+       * 
+       * If there is a selection, the contents of the selection will
+       * need to be deleted before the new character is inserted.
+       * 
+       * When a character is inserted, it might be:
+       * - within a word, a non-word sequence, or a series of linebreaks
+       * - at a boundary between two types, one of which may be similar
+       * 
+       * In the first case, if the input is the same, it will be used to
+       * join the preceding and following 
+       * 
+       * The `type`s for before and after will be compared with the
+       * type of the current input. If all are the same, then the input
+       * will become part of a single tag. If the input type is the same
+       * as one of the surrounding types, it will be added to that
+       * tag. If it is different from both, then a new tag will be
+       * created.
+       *
+       * @param  {number}   charIndex  The position of the character
+       *                                  in the textarea.textContent
+       * @param  {boolean}  isAfter    True if the details of the
+       *                                  following context should be
+       *                                  returned. If not, the details
+       *                                  of the preceding context will
+       *                                  be returned
+       * @return { index: charIndex
+       *         , node: index of node
+       *         , char: index of char within node
+       *         , type: "w" | "W" | "r" (word | non-word | linebreak)
+       *         }
+       */
+      function getInsertionContext(charIndex, isAfter) {
+        var context = { index: charIndex }
+
+        var nodeIndex = wordBorderArray.length - 1
+        var nodeStartChar = wordBorderArray[nodeIndex]
+        var char
+          , text
+
+        if (!charIndex) { 
+          if (!isAfter) {
+            // We're right at the beginning: nothing before
+            context.type = "^"
+            context.node = -1
+            return context
+          }
+        }
+
+        while (nodeStartChar > charIndex) {
+          nodeIndex -= 1
+          nodeStartChar = wordBorderArray[nodeIndex]
+        }
+
+        char = charIndex - nodeStartChar
+
+        context.node = nodeIndex
+        context.char = char
+        text = textMap[wordBorderArray[nodeIndex]]
+
+        if (!isAfter) {
+          if (!char) {
+            // Special case: insertion point is at type boundary
+            context.node = nodeIndex - 1
+            text = textMap[wordBorderArray[nodeIndex - 1]]
+            context.char = text.length
+          }
+        }
+
+        context.type = getType(text)
+
+        return context
+
+        function getType(text) {
+          if (!text) {
+            return "$"
+          } else if (_rn.test(text)) {
+            return "r"
+          } else if (_W.test(text)) {
+            return "W"
+          } else {
+            return "w"
+          }
+        }
       }
     }
 
-    function checkWord(event) {
-      var key = event.key  
-      var ignore = false
-      var caret
-        , text
-        , newLength
-        , type
+    function treatKeyUp(event) {
+      postProcessKeyUp()
+      updateInputContext()
 
-      type = (function setType() {
-        switch (event.keyCode) {
-          case 13:
-            key = String.fromCharCode(13) // was "Enter"
-            return "r"
-          case 8:
-            return "b"
-          case 46:
-            return "d"
+      function postProcessKeyUp() {
+        var key = event.key  
+        var ignore = false
+        var caret
+          , text
+          , newLength
+          , type
+
+        type = (function setType() {
+          switch (event.keyCode) {
+            case 13:
+              key = String.fromCharCode(13) // was "Enter"
+              return "r"
+            case 8:
+              return "b"
+            case 46:
+              return "d"
+          }
+
+          if (key.length !== 1 // may be "Control" or "Shift"
+              || event.altKey
+              || event.ctrlKey
+              || event.metaKey) {
+
+            return false
+          }
+
+          return _W.test(key)
+          ? "W"
+          : "w"
+        })() // "w(ord)"|"W"|"r(eturn)"|"b(ackspace)"|"d"|false     
+         
+        if (!type) {   
+          return
         }
 
-        if (key.length !== 1 // may be "Control" or "Shift"
-            || event.altKey
-            || event.ctrlKey
-            || event.metaKey) {
+        caret = input.selectionStart // after keyup === selectionEnd
+        text = input.value
+        newLength = text.length
 
-          return false
-        }
-
-        return _W.test(key)
-        ? "W"
-        : "w"
-      })() // "w(ord)"|"W"|"r(eturn)"|"b(ackspace)"|"d"|false     
-       
-      if (!type) {   
-        return
-      }
-
-      caret = input.selectionStart // after keyup === selectionEnd
-      text = input.value
-      newLength = text.length
-
-      if (newLength === oldLength && inputContext.selectCount !== 1) {
-        overwrite()
-      } else {
-        insert()
-      }
-
-      function overwrite() {
-        alert ("Please don't use the overwrite feature yet")
-      }
-
-      function insert() {
-        oldLength = newLength
-
-        if (inputContext.selectCount) {
-          deleteSelection()
-        }
-
-        if (type === "b") {
-          // BACKSPACE
-        } else if (type === "d") {
-          // DELETE
+        if (newLength === oldLength && inputContext.selectCount !== 1) {
+          overwrite()
         } else {
-          treatInput()
+          insert()
         }
-      }
 
-      function deleteSelection() {
-        alert ("Please don't test selection yet")
-        // Remove intervening nodes
-        // Trim end of start node
-        // Trim start of end node
-        // EITHER combine two nodes OR leave nodes as is
-        // Update textMap
-        // Update wordBorderArray
-      }
-
-      function treatInput() {
-        if (type === inputContext.before.type) {
-          // We may be extending a sequence or inserting in the
-          // middle of it
-          updateTag(inputContext.before, key, type)
-
-        } else if (type === inputContext.after.type) {
-          // We are prefixing a sequence
-          updateTag(inputContext.after, key, type)
-
-        } else {
-          insertNewTag(type, key)
+        function overwrite() {
+          alert ("Please don't use the overwrite feature yet")
         }
-      }
 
-      // Colour word(s) if switching to non-word
+        function insert() {
+          oldLength = newLength
+
+          if (inputContext.selectCount) {
+            deleteSelection()
+          }
+
+          if (type === "b") {
+            // BACKSPACE
+          } else if (type === "d") {
+            // DELETE
+          } else {
+            treatInput()
+          }
+        }
+
+        function deleteSelection() {
+          alert ("Please don't test selection yet")
+          // Remove intervening nodes
+          // Trim end of start node
+          // Trim start of end node
+          // EITHER combine two nodes OR leave nodes as is
+          // Update textMap
+          // Update wordBorderArray
+        }
+
+        function treatInput() {
+          if (type === inputContext.before.type) {
+            // We may be extending a sequence or inserting in the
+            // middle of it
+            updateTag(inputContext.before, key, type)
+
+          } else if (type === inputContext.after.type) {
+            // We are prefixing a sequence
+            updateTag(inputContext.after, key, type)
+
+          } else {
+            insertNewTag(type, key)
+          }
+        }
+
+        // Colour word(s) if switching to non-word
+      }
     }
 
     function insertNewTag(tagType, text) {
@@ -305,7 +405,7 @@
        *                              to be split.
        */
       function splitNode(charIndex) {
-        var key = parseInt(wordBorderArray[nodeIndex])
+        var key = wordBorderArray[nodeIndex]
         var text = textMap[key]
         var split = text.substring(charIndex)
         var text = text.substring(0, charIndex)
@@ -400,7 +500,7 @@
         ii = wordBorderArray.length
 
         while (ii-- > alteredNodeIndex) {
-          key = parseInt(wordBorderArray[ii], 10)
+          key = wordBorderArray[ii]
           value = textMap[key]
           delete textMap[key]
           textMap[key + increment] = value
@@ -413,98 +513,61 @@
     }
 
     function updateWordBorderArray() {
-      wordBorderArray = Object.keys(textMap)
-      wordBorderArray.sort(function (a, b) {
-        return a - b
-      })
+      wordBorderArray = Object.keys(textMap) // strings
+        .map(function(string) { // convert to integers
+         return parseInt(string, 10)
+        })
+        .sort(function (a, b) { // sort numerically
+          return a - b
+        })
     }
 
-    /**
-     * Gets the insertion context, either for the text preceding
-     * charIndex (if isAfter is falsy), or for the text following.
-     * 
-     * If there is a selection, the contents of the selection will
-     * need to be deleted before the new character is inserted.
-     * 
-     * When a character is inserted, it might be:
-     * - within a word, a non-word sequence, or a series of linebreaks
-     * - at a boundary between two types, one of which may be similar
-     * 
-     * In the first case, if the input is the same, it will be used to
-     * join the preceding and following 
-     * 
-     * The `type`s for before and after will be compared with the
-     * type of the current input. If all are the same, then the input
-     * will become part of a single tag. If the input type is the same
-     * as one of the surrounding types, it will be added to that
-     * tag. If it is different from both, then a new tag will be
-     * created.
-     *
-     * @param  {number}   charIndex  The position of the character
-     *                                  in the textarea.textContent
-     * @param  {boolean}  isAfter    True if the details of the
-     *                                  following context should be
-     *                                  returned. If not, the details
-     *                                  of the preceding context will
-     *                                  be returned
-     * @return { index: charIndex
-     *         , node: index of node
-     *         , char: index of char within node
-     *         , type: "w" | "W" | "r" (word | non-word | linebreak)
-     *         }
-     */
-    function getInsertionContext(charIndex, isAfter) {
-      var context = { index: charIndex }
+    function refreshDisplay(event) {
+      var activeNodeIndex = inputContext.before.node
+      var activeKey
+        , activeText
+        , outsideWord
+        , activeWordText
 
-      var nodeIndex = wordBorderArray.length - 1
-      var nodeStartChar = wordBorderArray[nodeIndex]
-      var char
-        , text
-
-      if (!charIndex) { 
-        if (!isAfter) {
-          // We're right at the beginning: nothing before
-          context.type = "^"
-          return context
-        }
+      if (activeNodeIndex === activeWordIndex) {
+        removeSpanStyle(activeWordIndex)
+        return
       }
 
-      while (nodeStartChar > charIndex) {
-        nodeIndex -= 1
-        nodeStartChar = wordBorderArray[nodeIndex]
+      activeKey = wordBorderArray[activeNodeIndex]
+      activeText = textMap[activeKey]
+      outsideWord = _W.test(activeText) || _rn.test(activeText)
+
+      if (activeWordIndex === -1) {
+        // We haven't just left a word, but we might have entered one
+        activeWordIndex = activeNodeIndex
+        return
       }
 
-      char = charIndex - nodeStartChar
+      activeWordText = textMap[wordBorderArray[activeWordIndex]]
 
-      context.node = nodeIndex
-      context.char = char
-      text = textMap[wordBorderArray[nodeIndex]]
+      scrollLists(activeWordText)
+      setColour(activeWordIndex, activeWordText)
 
-      if (!isAfter) {
-        if (!char) {
-          // Special case: insertion point is at type boundary
-          context.node = nodeIndex - 1
-          text = textMap[wordBorderArray[nodeIndex - 1]]
-          context.char = text.length
-        }
+      activeWordIndex = outsideWord ? -1 : activeNodeIndex
+
+      function removeSpanStyle(nodeIndex) {
+        var span = overlayNodes[nodeIndex]
+        span.style.color = null
       }
 
-      context.type = getType(text)
+      function scrollLists(activeText) {
+      } 
 
-      return context
+      function setColour(nodeIndex, word) {
+        var span = overlayNodes[nodeIndex]
+        var frequencyIndex = orderedList.indexOf(word)
 
-      function getType(text) {
-        if (!text) {
-          return "$"
-        } else if (_rn.test(text)) {
-          return "r"
-        } else if (_W.test(text)) {
-          return "W"
-        } else {
-          return "w"
-        }
+        colourItem(frequencyIndex, span)
       }
     }
+
+
 
     ;(function TESTS(){
 
@@ -590,18 +653,8 @@
         console.log(getInsertionContext(11, true))       
       }
     })()
-
-    function colourSpan(wordIndex) {
-      var word = textMap[wordBorderArray[overlayNodes]]
-      var frequencyIndex = orderedList.indexOf(word)
-      var span = overlayNodes[wordIndex]
-
-      colourItem(frequencyIndex, span)
-    }
-
-    function scrollLists(event) {
-
-    }
   })()
   /* END OF INPUT */
+
+
 })()

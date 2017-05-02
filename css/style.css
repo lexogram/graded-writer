@@ -47,8 +47,6 @@ body {
   background-color: rgba(255,0,0,0.1);
   pointer-events: none;
   white-space:pre-wrap;
-
-  color: green;
 }
 
 #controls {

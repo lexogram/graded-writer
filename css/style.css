@@ -47,7 +47,7 @@ body {
   top: calc(43px - 100%);
   /*background-color: rgba(255,0,0,0.1);*/
   pointer-events: none;
-  white-space:pre-wrap;
+  white-space: pre-wrap;
 }
 
 #controls {
@@ -111,11 +111,11 @@ div#out-of-range{
   color: #800;
 }
 
-#frequency{
+#ordered{
   left: 12.5em;
 }
 
-#frequency li.highlight {
+#ordered li.highlight {
   background-color: rgba(255,0,0,0.2);
   font-weight: bold;
 }

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+  <meta charset="utf-8">
+  <title>Shortcuts Test</title>
+</head>
+<body>
+<h1>Shortcuts test</h1>
+<p>Test pressing Ctrl/⌘-V, -X, -Z and -Shift-Z</p>
+<p>Look for output in the Console.</p>
+
+
+
+<script src="../js/utilities/shortcuts.js"></script>
+<script>
+;(function test(shortcuts) {
+  "use strict"
+
+  function cut() {
+    console.log("Cut")
+  }
+
+  function paste() {
+    console.log("Paste")
+  }
+
+  function undo() {
+    console.log("Undo")
+  }
+
+  function redo() {
+    console.log("Redo")
+  }
+
+  shortcuts.register("cut", cut)
+  shortcuts.register("paste", paste)
+  shortcuts.register("undo", undo)
+  shortcuts.register("redo", redo)
+
+})(window.lexogram.shortcuts)
+</script>
+</body>
+</html>

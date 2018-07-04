@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+  <meta charset="utf-8">
+  <meta name = "viewport" content = "width = device-width, initial-scale = 1.0">
+  <title>textarea selection</title>
+  <style>
+    textarea {
+      width: 24em;
+      padding: 0.5em;
+    }
+    p {  
+      border: 1px solid;
+      width: 20em;
+      padding: 0.5em;
+    }
+  </style>  
+</head>
+
+<body>
+<h1>textarea selection</h1>
+
+<textarea>Some text to select</textarea>
+<p></p>
+
+<script>
+;(function test() {
+  "use strict"
+
+  let textArea = document.querySelector("textarea")
+  let p = document.querySelector("p")
+
+  let listener = (event) => {
+    p.innerText = "{ start: " + textArea.selectionStart
+                + ", end: "   + textArea.selectionEnd
+                + ", value: '"+ textArea.value.substring(
+                                           textArea.selectionStart
+                                         , textArea.selectionEnd
+                                         )
+                + "' }"
+  }
+  textArea.addEventListener("mouseup", listener, true)
+  
+})()
+</script>
+</body>
+</html>

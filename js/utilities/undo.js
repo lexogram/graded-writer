@@ -12,7 +12,7 @@
 
 
 
-  class Action {
+  class UndoAction {
     constructor (data) {
       this.data = data 
     }
@@ -66,56 +66,46 @@
 
 
   class UndoRedo {
-    constructor() {
+    constructor(shortcutGenerator) {
+
+      if (shortcutGenerator) {
+        let listener = this.undo.bind(this)
+        shortcutGenerator.register("undo", listener)
+        listener = this.redo.bind(this)
+        shortcutGenerator.register("redo", listener)
+      }
+
       this.undoStack = []
       this.redoStack = []
 
+      this.progressiveTypes = ["type", "delete", "backspace"]
+      // one-off types: "paste", "cut"
+      this.currentType = undefined
       this.currentAction = null
     }
 
-    // PROGRESSIVE ACTIONS // PROGRESSIVE ACTIONS // PROGRESSIVE //
 
-    startAction(data) {
-      this._completeCurrentAction()
-      this.currentAction = new Action(data)
+    // PUBLIC METHODS // PUBLIC METHODS // PUBLIC METHODS //
 
-      this.redoStack.length = 0
+    track(data) {
+      let type = data.type
+      let result
 
-      return "startAction"
-    }
+      if (this.progressiveTypes.indexOf(type) < 0) {
+        result = this._createAction(data)
 
+      } else if (type !== this.currentType ) {
+        result = this._startAction(data)
 
-    addStep(data) {
-      this.currentAction.addStep(data)
-
-      return "addStep"
-    }
-
-
-    _completeCurrentAction() {
-      if (this.currentAction) {
-        this.currentAction.complete()
-        this.undoStack.push(this.currentAction)
-        this.currentAction = null
+      } else {
+        return this._addStep(data) // don't reset currentType
       }
+
+      this.currentType = type
+
+      return result
     }
 
-
-    // ONE-OFF ACTIONS // ONE-OFF ACTIONS // ONE-OFF ACTIONS //
-
-    createAction(data) {
-      this._completeCurrentAction()
-
-      let action = new Action(data)
-      this.undoStack.push(action)
-
-      this.redoStack.length = 0
-
-      return "createAction"
-    }
-
-
-    // UNDO AND REDO // UNDO AND REDO // UNDO AND REDO //
 
     undo() {
       let action
@@ -145,60 +135,54 @@
 
       return this.redoStack.length // if 0, disable redo button 
     }
-  }
 
 
+    // PRIVATE METHODS // PRIVATE METHODS // PRIVATE METHODS //
 
-  class TrackActions {
-    constructor(shortcutGenerator) {
-      this.undoRedo = new UndoRedo()
-      this.progressiveTypes = ["type", "delete", "backspace"]
-      // one-off types: "paste", "cut"
-      this.currentType = undefined
-
-      if (shortcutGenerator) {
-        let listener = this.undo.bind(this)
-        shortcutGenerator.register("undo", listener)
-        listener = this.redo.bind(this)
-        shortcutGenerator.register("redo", listener)
+    _completeCurrentAction() {
+      if (this.currentAction) {
+        this.currentAction.complete()
+        this.undoStack.push(this.currentAction)
+        this.currentAction = null
       }
     }
 
 
-    track(data) {
-      let type = data.type
-      let result
+    // PROGRESSIVE ACTIONS // PROGRESSIVE ACTIONS // PROGRESSIVE //
 
-      if (this.progressiveTypes.indexOf(type) < 0) {
-        result = this.undoRedo.createAction(data)
+    _startAction(data) {
+      this._completeCurrentAction()
+      this.currentAction = new UndoAction(data)
 
-      } else if (type !== this.currentType ) {
-        result = this.undoRedo.startAction(data)
+      this.redoStack.length = 0
 
-      } else {
-        return this.undoRedo.addStep(data) // don't reset currentType
-      }
-
-      this.currentType = type
-
-      return result
+      return "startAction"
     }
 
 
-    undo() {
-      console.log("Undo!")
-      this.undoRedo.undo()
+    _addStep(data) {
+      this.currentAction.addStep(data)
+
+      return "addStep"
     }
 
 
-    redo() {
-      console.log("Redo!")
-      this.undoRedo.redo()
+    // ONE-OFF ACTIONS // ONE-OFF ACTIONS // ONE-OFF ACTIONS //
+
+    _createAction(data) {
+      this._completeCurrentAction()
+
+      let action = new UndoAction(data)
+      this.undoStack.push(action)
+
+      this.redoStack.length = 0
+
+      return "createAction"
     }
   }
 
 
 
-  lx.trackActions = new TrackActions(lx.shortcuts)
+  lx.undoRedo = new UndoRedo(lx.shortcuts)
   
 })(window.lexogram)

@@ -6,10 +6,15 @@
  * Merge start and end span
  * Erase selection
  * Deal with cut
- * 
+ *
  * Do type, backspace and delete
  * Colour spans
  * 
+ * Detect out-of-range words used in text
+ * Add out-of-range words as they are inserted
+ * (Alphabetical order. Collapse capitalized if lowercase exists,
+ *  unless capitalization occurs in mid-sentence.)
+ *
  * Use a subclass per language that adds language-specific utilities
  * - Russian
  *   - Corpus includes accentuation marks
@@ -19,6 +24,7 @@
  *   - Word delimitation
  */
 
+
 ;(function inputMangerLoaded(lx){
   "use strict"
 
@@ -27,7 +33,7 @@
   }
 
 
-  window.feedback = document.querySelector("#feedback")
+  window.feedback = document.querySelector("#feedback p")
 
 
   /* POLYFILLS and HACKS */
@@ -45,7 +51,7 @@
        *   Index at which to start splicing in the items of graftArray
        * @param {array}  graftArray
        *   An array of items to insert starting at start
-       *   
+       *
        * @return {array} The original array, in its modified state
        */
 
@@ -60,9 +66,10 @@
 
 
   class InputManager {
-    constructor(corpus, trackActions, shortcutGenerator) {
+    constructor(corpus, undoRedo, panels) {
       this.corpus = corpus
-      this.trackActions = trackActions
+      this.undoRedo = undoRedo
+      this.panels = panels
 
       // <<< HARD-CODED
       let inputSelector = "#input textarea"
@@ -76,21 +83,19 @@
 
       this.lineBreakRegex = /[\r|\r\n|\n]+/g // line break on any platform
       // var _W = /[\s!-\/:-@[-`{-~\u00A0-¾—-⁊$]/ // any non-word character
-                                                // 
-      // this.wordBorderArray  = [0] 
+                                                //
+      // this.wordBorderArray  = [0]
       // this.chunkArray       = [""]
       // this.chunkTypeArray   = ["$"]
-      this.inputContext     = {}
+      this.inputContext    = {}
+      this.activeNodeIndex = -1
+      this.activeWord      = ""
 
-      ////// ¿ARE THESE USED? //////
-      this.oldLength = 0
-      this.activeWordIndex = -1
- 
       // Set default values and initialize with no text
       this.regex = null
       this.findWords = true
       this.load("", true)
-      
+
       // Key and mouse events
       let listener = this.treatKeyUp.bind(this)
       this.input.addEventListener("keyup", listener, true)
@@ -99,16 +104,20 @@
 
       listener = this.interceptPaste.bind(this)
       this.input.addEventListener("paste", listener, true)
-      // listener = this.interceptCut.bind(this)
-      // this.input.addEventListener("cut", listener, true)
-
-      listener = this.beforeCut.bind(this)
-      shortcutGenerator.register("cut", listener)
-      // listener = this.paste.bind(this)
-      // shortcutGenerator.register("paste", listener)
+      listener = this.interceptCut.bind(this)
+      this.input.addEventListener("cut", listener, true)
     }
 
 
+    /**
+     * Sent by the callbackWith(languageData) method of the
+     * Graded Writer instance, when a new corpus is loaded.
+     *
+     * @param      {RegExp}  regex      The regular expression
+     * @param      {<type>}  findWords  true if regex is designed to
+     *                                  find words, false if it is
+     *                                  designed to detect non-words
+     */
     setWordDetection(regex, findWords) {
       this.regex = new RegExp(regex, "g")
       this.findWords = findWords
@@ -117,40 +126,35 @@
     }
 
 
+    /**
+     * Sent by the setTarget() method of the Graded Writer instance
+     * when the target range element is updated. The Corpus instance
+     * will already have been told about the new target, so calls to
+     * this.corpus.getWordColour() made by _recolourWordNode() will
+     * return the appropriate colour for the new target.
+     */
     setTarget() {
-      let colorItem = (colour, node) => {
-        node.style = "color:"+colour+";"
-      }
-
       let total = this.overlayNodes.length
       let ii
-        , node
-        , text
-        , type
-        , index
-        , colour
-      
+
       for (ii = 0; ii < total; ii += 1) {
-        node = this.overlayNodes[ii]
-        text = this.chunkArray[ii]
-        type = this.chunkTypeArray[ii]
-
-        if (type !== "w") {
-          // Ignore spaces, numbers, punctuation and line breaks
-        } else {
-          index = this.corpus.getFrequency(text)
-
-          if (index < 0) {
-            // This may be a non-word, a <br> or an unknown word
-          } else {
-            colour = this.corpus.getColour(index)
-            colourItem(colour, node)
-          }
+        if (this.chunkTypeArray[ii] === "w") {
+          this._recolourWordNode(ii)
         }
       }
     }
 
 
+    /**
+     * Sent by the constructor and from an external script (TBD)
+     *
+     * Replaces all the text with new text.
+     *
+     * @param  {string}   text           New text to display
+     * @param  {boolean}  isNotUndoable  Indicates if not undoable.
+     *                                   true when called from the
+     *                                   constructor
+     */
     load(text, isNotUndoable) {
       if (typeof text !== "string") {
         return console.log("Attempting to load non-string text:"
@@ -162,7 +166,7 @@
       this._replaceContentsOf(this.overlay, endSpan)
 
       this.input.value     = text
-      this.wordBorderArray = [0] 
+      this.wordBorderArray = [0]
       this.chunkArray      = [""]
       this.chunkTypeArray  = ["$"]
       this.overlayNodes    = [endSpan]
@@ -171,21 +175,37 @@
     }
 
 
+    /**
+     * Called by the browser when an onpaste event is triggered on
+     * the input textarea, before the paste operation is actually made
+     *
+     * Grabs the text in the clipboard and uses it to update the
+     * overlay. The browser will only update the textarea after this
+     * operation is complete.
+     *
+     * @param  {<type>}  event   A paste event
+     */
     interceptPaste(event) {
       let text = event.clipboardData.getData('text/plain')
       let start = this.input.selectionStart
       let end = this.input.selectionEnd
 
       if (start !== end) {
-        // TODO: erase selection
+        this.cut(start, end)
       }
 
       this.paste(text, start, false)
     }
 
 
-    beforeCut() {
-      console.log("beforeCut")
+    /**
+     * Called by the browser when an oncut event is triggered on
+     * the input textarea, before the cut operation is actually made.
+     * The cut data will already be on the clipboard, but it will not
+     * yet have been removed from the input textarea.
+     *
+     */
+    interceptCut() {
 
       let start = this.input.selectionStart
       let end = this.input.selectionEnd
@@ -198,11 +218,18 @@
     }
 
 
-    // interceptCut(event) {
-    //   console.log(event.type, "^", event.clipboardData.getData('text/plain'), "$")
-    // }
-
-
+    /**
+     * Sent by interceptPaste(), after the current selection has been
+     * cut, and by an UndoAction instance.
+     *
+     * Adds the text at insertPoint, and updates the various Model
+     * arrays.
+     *
+     * @param      {<type>}  text         The text to paste
+     * @param      {string}  insertPoint  The insert point
+     * @param      {<type>}  ignoreUndo   true if the call comes from
+     *                                    an UndoAction instance
+     */
     paste(text, insertPoint, ignoreUndo) {
 
       let length = text.length
@@ -211,7 +238,7 @@
         let endPoint = insertPoint + length
         let snippet = this._getSnippet(text)
 
-        let undoData = {    
+        let undoData = {
           type: "paste"
         , redoFunction: this.paste.bind(this)
         , redoData: [text, insertPoint]
@@ -223,7 +250,7 @@
                  + "\n" + snippet
         }
 
-        this.trackActions.track(undoData)
+        this.undoRedo.track(undoData)
       }
 
       let paragraphArray = this._getParagraphArray(text, insertPoint)
@@ -234,17 +261,33 @@
       let nodeIndex = this._electivelySplitAt(insertPoint)
       this._shiftSubsequentSpans(nodeIndex, length)
       // may split a node into two of the same type
-      this._insertArraysAndSpans(nodeIndex, insertArrayMap)
+      this._insertSpans(nodeIndex, insertArrayMap)
+      this._insertArrays(nodeIndex, insertArrayMap)
     }
 
 
+    /**
+     * Sent by interceptCut() and by an UndoAction instance
+     *
+     * @param      {string}  start       The index of the first char
+     *                                   to cut
+     * @param      {string}  end         The index of the char after
+     *                                   the end of the cut
+     * @param      {<type>}  ignoreUndo  true if the call comes from
+     *                                   and UndoAction instance
+     */
     cut (start, end, ignoreUndo) {
+      if (isNaN(start)) {
+        start = this.inputContext.before.index
+        end = this.inputContext.after.index
+      }
+
       let text = this.input.value.substring(start, end)
 
       if (!ignoreUndo) {
         let snippet = this._getSnippet(text)
 
-        let undoData = {    
+        let undoData = {
           type: "cut"
         , redoFunction: this.cut.bind(this)
         , redoData: [start, end]
@@ -256,7 +299,7 @@
                  + "\n" + snippet
         }
 
-        this.trackActions.track(undoData)
+        this.undoRedo.track(undoData)
       }
 
       console.log(text, {
@@ -266,6 +309,7 @@
       , "ignoreUndo": ignoreUndo
       })
     }
+
 
     // EVENTS // EVENTS // EVENTS // EVENTS // EVENTS // EVENTS //
 
@@ -279,36 +323,133 @@
 
 
     /**
-     * Ensures that the textModel is updated in the right place
-     * when the user types, pastes or cuts text
+     * Sent by a keyup or mouseup event (treatKeyUp) and  by
+     * setWordDetection()
      *
-     * @param      {<type>}  event   mouseup or keyup event
+     * Ensures that the textModel is updated in the right place
+     * when the user types, pastes or cuts text. To do this, creates
+     * this.inputContext object with a format like:
+     *
+     *  { "before": {
+     *      "index": 51
+     *    , "node":  18
+     *    , "char":  2
+     *    , "text":  "давно"
+     *    , "type":  "w"
+     *    }
+     *  , "after": {
+     *      "index": 52
+     *    , "node":  18
+     *    , "char":  3
+     *    , "text":  "давно"
+     *    , "type":  "w"
+     *    }
+     *  , "selectCount": 1
+     *  }
+     *
+     * @param  {event}  event   mouseup or keyup event,
+     *                          or undefined if the call comes from
+     *                          setWordDetection()
      */
     updateInputContext(event) {
       let start  = this.input.selectionStart
       let end    = this.input.selectionEnd
       let before = this._getInsertionContext(start)
       let after  = this._getInsertionContext(end, true)
-     
-      // We don't want the frequency list to scroll if the user is
-      // simply starting a new word
+
+      // We don't want the frequency list to scroll on
+      // refreshDisplay() if the user is simply starting a new word
       let isKeyInput = event
-                    && event.type === "keyup" 
+                    && event.type === "keyup"
                     && event.key.length === 1
 
       this.inputContext = {
         before: before
       , after:  after
       , selectCount: end - start
-      } 
+      }
 
       feedback.innerHTML = lexogram.prettify(this.inputContext, true)
-      // this.refreshDisplay(isKeyInput)
+
+      if (!event) {
+
+      }
+
+      this._refreshDisplay(isKeyInput)
     }
 
 
     // PRIVATE METHODS // PRIVATE METHODS // PRIVATE METHODS //
 
+    _treatInput(key, type) {
+      if (type === "b") {
+        return this._backspace()
+
+      } else if (type === "d") {
+        return this._delete()
+      }
+
+      this._insert(key, type)
+    }
+
+
+    _delete() {
+
+    }
+
+
+    _backspace() {
+
+    }
+
+
+    _delete() {
+
+    }
+
+
+    /**
+     * @param  <"w" | "W">  type
+     *     This indicates whether the character to insert is a word
+     *     or a non-Word character.
+     */
+    _insert(key, type) {
+      if (type === this.inputContext.before.type) {
+        // We may be extending a sequence or inserting in the
+        // middle of it
+        this._updateTag(this.inputContext.before, key, type)
+
+      } else if (type === this.inputContext.after.type) {
+        // We are prefixing a sequence
+        this._updateTag(this.inputContext.after, key, type)
+
+      } else {
+        this._insertNewTag(type, key)
+      }
+
+      // Colour word(s) if switching to non-word
+    }
+
+      // 1. Uncolour word
+      //  + scroll to this word
+      // 2. Recolour word
+      //    (Batch colour words)
+      // 3. Modify span
+      // 4. Split span
+      // 5. Create span
+      // 6. Merge spans
+      // 7. Update wordBorderArray
+
+    /**
+     * Sent by load()
+     * 
+     * Removes all the children of parent and then adds the single
+     * element in their place
+     *
+     * @param      {<type>}  parent   The node to empty (this.overlay)
+     * @param      {<type>}  element  The element to add:
+     *                                <span class="end"></span>
+     */
     _replaceContentsOf(parent, element) {
       let child
 
@@ -322,9 +463,9 @@
 
     /**
      * Called by paste()
-     * 
-     * @param  {string}  text   the text that will be pasted
-     * 
+     *
+     * @param  {string}  text   The text that is to be pasted
+     *
      * Returns an array with the format:
      * [ { index: <integer>
      *   , chunk: <paragraph | return character(s)>
@@ -341,7 +482,7 @@
         , index
         , chunk
 
-      let addText = (start, index) => { 
+      let addText = (start, index) => {
         array.push({
           index: start + insertPoint
         , chunk: text.substring(start, index)
@@ -380,9 +521,9 @@
 
     /**
      * Called by paste()
-     * Returns an object with the format 
+     * Returns an object with the format
      * { wordBorderArray: [<integer>, ...]
-     * , chunkArray: [<string: word | linebreak | non-word>. ... ]
+     * , chunkArray: [<string: word | linebreak | non-word>, ... ]
      * , chunkTypeArray: [<"w" | "r" | "W">, ...]
      * }
      *
@@ -441,14 +582,14 @@
           // , index: <non-negative integer>
           // , input: <string>
           // ]
-          
+
           index = result.index
 
           if (index) {
             addUnmatchedChunk(start, index)
           }
 
-          addChunk(result[0], index)     
+          addChunk(result[0], index)
         }
 
         if (start < length) {
@@ -474,19 +615,23 @@
 
 
     /**
+     * Called twice by updateInputContext(), after a mouseup or keyup
+     * event, once for the beginning of the current selection, once
+     * for the end.
+     * 
      * Gets the insertion context, either for the text preceding
      * charIndex (if isAfter is falsy), or for the text following.
-     * 
+     *
      * If there is a selection, the contents of the selection will
      * need to be deleted before the new character is inserted.
-     * 
+     *
      * When a character is inserted, it might be:
      * - within a word, a non-word sequence, or a series of linebreaks
      * - at a boundary between two types, one of which may be similar
-     * 
+     *
      * In the first case, if the input is the same, it will be used to
-     * join the preceding and following 
-     * 
+     * join the preceding and following
+     *
      * The `type`s for before and after will be compared with the
      * type of the current input. If all are the same, then the input
      * will become part of a single tag. If the input type is the same
@@ -515,7 +660,7 @@
         , char
         , text
 
-      if (!charIndex) { 
+      if (!charIndex) {
         if (!isAfter) {
           // Special case: we're right at the beginning with
           // nothing selected.
@@ -525,7 +670,7 @@
         }
       }
 
-      // Find out which chunk the selection point is in 
+      // Find out which chunk the selection point is in
       nodeIndex = this._getNodeAndCharIndex(charIndex) // object
       charInNode = nodeIndex.charInNode
       nodeIndex  = nodeIndex.nodeIndex // integer
@@ -533,7 +678,7 @@
       if (!isAfter) {
         if (!charInNode) {
           // Special case: the beginning of the selection is at
-          // a type boundary. Because we tested for another 
+          // a type boundary. Because we tested for another
           // special case earlier, we can be sure that nodeIndex
           // is 0 or greater.
           atTypeBoundary = true
@@ -551,6 +696,15 @@
     }
 
 
+    /**
+     * Called by _getInsertionContext() and _electivelySplitAt())
+     *
+     * @param  {number}  charIndex  The character index
+     * 
+     * @return {object}  { nodeIndex: <integer>
+     *                   , charInNode: <integer>
+     *                   }
+     */
     _getNodeAndCharIndex(charIndex) {
       let nodeIndex = this.wordBorderArray.length - 1
       let nodeStartChar = this.wordBorderArray[nodeIndex]
@@ -562,7 +716,7 @@
 
       return {
         nodeIndex: nodeIndex
-      , charInNode: nodeStartChar - charIndex
+      , charInNode: charIndex - nodeStartChar
       }
     }
 
@@ -606,7 +760,7 @@
       this.chunkTypeArray.splice(nodeIndex, 0, type)
       this.wordBorderArray.splice(nodeIndex, 0, insertPoint)
 
-      // Add a new one  
+      // Add a new one
       nextSibling = node.nextSibling
       node = document.createElement("span") // no style yet
       node.innerText = chunk2
@@ -617,6 +771,15 @@
     }
 
 
+    /**
+     * Sent by paste() AND BY CUT()
+     *
+     * @param  {number}  nodeIndex  The index of the first node whose
+     *                              start char index is to be adjusted
+     * @param  {number}  length     The number of characters that have
+     *                              been added (+length) or removed
+     *                              (-length)
+     */
     _shiftSubsequentSpans(nodeIndex, length) {
       let ii = this.wordBorderArray.length
       for ( ; ii-- > nodeIndex ; ) {
@@ -626,15 +789,55 @@
 
 
     /**
+     * Sent by paste()
      * 
+     * Adds a new span before nodeIndex for each entry in 
+     * insertArrayMap.chunkArray
      *
-     * @param  {array}  insertArrayMap  An object with the format 
-     * { wordBorderArray: [<integer>, ...]
-     * , chunkArray: [<string: word | linebreak | non-word>. ... ]
-     * , chunkTypeArray: [<"w" | "r" | "W">, ...]
-     * }
+     * @param  {array}  insertArrayMap  An object with the format
+     *     { wordBorderArray: [<integer>, ...]
+     *     , chunkArray: [<string: word | linebreak | non-word>. ... ]
+     *     , chunkTypeArray: [<"w" | "r" | "W">, ...]
+     *     }
      */
-    _insertArraysAndSpans(nodeIndex, insertArrayMap) {
+    _insertSpans(nodeIndex, insertArrayMap) {
+      let chunkArray      = insertArrayMap.chunkArray
+      let chunkTypeArray  = insertArrayMap.chunkTypeArray
+
+      let nextSibling = this.overlayNodes[nodeIndex]
+      let total = chunkArray.length
+      let ii
+        , span
+        , chunk
+        , colour
+
+      for ( ii = 0 ; ii < total ; ii+= 1 ) {
+        span = document.createElement("span")
+        chunk = chunkArray[ii]
+        span.innerText = chunk
+        if (chunkTypeArray[ii] === "w") {
+          colour = this.corpus.getWordColour(chunk)
+          span.style = "color:" + colour
+        }
+        this.overlayNodes.splice(ii, 0, span)
+        this.overlay.insertBefore(span, nextSibling)
+      }
+    }
+
+
+    /**
+     * Sent by paste()
+     * 
+     * IUpdates the Model with the data for the text that has just
+     * been inserted
+     *
+     * @param  {array}  insertArrayMap  An object with the format
+     *     { wordBorderArray: [<integer>, ...]
+     *     , chunkArray: [<string: word | linebreak | non-word>. ... ]
+     *     , chunkTypeArray: [<"w" | "r" | "W">, ...]
+     *     }
+     */
+    _insertArrays(nodeIndex, insertArrayMap) {
       let wordBorderArray = insertArrayMap.wordBorderArray
       let chunkArray      = insertArrayMap.chunkArray
       let chunkTypeArray  = insertArrayMap.chunkTypeArray
@@ -642,25 +845,23 @@
       this.wordBorderArray.graft(nodeIndex, wordBorderArray)
       this.chunkArray.graft(nodeIndex, chunkArray)
       this.chunkTypeArray.graft(nodeIndex, chunkTypeArray)
-
-      console.log(lexogram.prettify(this.wordBorderArray))
-      console.log(lexogram.prettify(this.chunkArray))
-      console.log(lexogram.prettify(this.chunkTypeArray))
-
-      // this.createNodes()
     }
 
-    
+
+    /**
+     * Sent by treatKeyUp() after a keyup event
+     *
+     * @param   {event}    event   A keyup event
+     * @return  {boolean}  true if a key was added to the textarea,
+     *                     and therefore treated; false if the key
+     *                     that was released was a modifier key
+     */
     _postProcessKeyUp(event) {
-      let key = event.key 
-      // let caret
-      //   , text
-      //   , newLength
-      //   , type
+      let key = event.key
 
       let type = this._getType(key, event.keyCode)
-      // "w(ord)"|(not )"W"ord|"r(eturn)"|"b(ackspace)"|"d"elete|false     
-       
+      // "w(ord)"|(not )"W"ord|"r(eturn)"|"b(ackspace)"|"d"elete|false
+
       if (!type) {
         // The event is a modifier keypress
         return false
@@ -668,93 +869,17 @@
         key = String.fromCharCode(13) // was "Enter
       }
 
-      // caret = input.selectionStart // after keyup === selectionEnd
-      // text = input.value
-      // newLength = text.length
-      let newLength = input.value.length
-      let overwrite = (newLength === this.oldLength
-                    && this.inputContext.selectCount !== 1)
-
-      if (overwrite) {
-        this._overwrite()
-      } else {
-        this._insert(key, newLength, type)
+      if (this.inputContext.selectCount) {
+        this.cut() // creates an undo event
+      
+        if (type === "b" || type === "d") {
+          return true // _this.cut() did all the work needed
+        } 
       }
+
+     this._treatInput(key, type)
 
       return true
-    }
-
-
-    _overwrite() {
-      alert ("Please don't use the overwrite feature yet")
-    }
-
-    
-    _insert(key, newLength, type) {
-      this.oldLength = newLength
-      let deleteSection = this.inputContext.selectCount
-
-      if (deleteSection) {
-        _this.deleteSelection()
-
-        if (type === "b" || type === "d") {
-          return // _this.deleteSelection() did all the work needed
-        }
-
-      } else if (type === "b") {
-        return _this._backspace()
-
-      } else if (type === "d") {
-        return this._delete()
-      }
-      
-      this._treatInput(key, type)
-    }
-
-
-    _deleteSelection() {
-      alert ("Please don't test selection yet")
-      // Remove intervening nodes
-      // Trim end of start node
-      // Trim start of end node
-      // EITHER combine two nodes OR leave nodes as is
-      // Update this.chunkArray
-      // Update this.wordBorderArray
-    }
-
-
-    _delete() {
-
-    }
-
-
-    _backspace() {
-
-    }
-
-
-    /**
-     * ''
-     *
-     * @param  <"w" | "W">  type
-     *     This indicates whether the character to insert is a word
-     *     or a non-Word character.
-     */
-    _treatInput(key, type) {
-      if (type === this.inputContext.before.type) {
-        // We may be extending a sequence or inserting in the
-        // middle of it
-        updateTag(this.inputContext.before, key, type)
-
-      } else if (type === this.inputContext.after.type) {
-        // We are prefixing a sequence
-        updateTag(this.inputContext.after, key, type)
-
-      } else {
-        insertNewTag(type, key)
-      }
-
-      // Colour word(s) if switching to non-word
     }
 
 
@@ -796,7 +921,7 @@
       //               true \  "w"  \  "W"
       //                    ————————\———————
       //              false \  "W"  \  "w"
- 
+
       let isWord = this.regex.test(key)
                  ? this.findWords
                  : !this.findWords
@@ -805,13 +930,24 @@
     }
 
 
+    /**
+     * Called by paste() and cut()
+     *
+     * @param   {string}  text   A string which may be any length
+     * 
+     * @return  {string}         Returns a string with a maximum
+     *                           length of this.snippetLength * 2 + 5
+     *                           If text is longer than this, the 
+     *                           middle chunk will be replaced with
+     *                           " ... "
+     */
     _getSnippet(text) {
       if (/^\s*$/.test(text)) {
         return "<whitespace>"
       }
 
       if (text.length > this.snippetLength * 2 + 5) {
-        text = text.substring(0, this.snippetLength) 
+        text = text.substring(0, this.snippetLength)
              + " ... "
              + text.substring(text.length - this.snippetLength)
       }
@@ -819,230 +955,179 @@
       return "\"" + text + "\""
     }
 
- 
-    // ORIGINAL CODE //
-     
-      
-      // insertNewTag(tagType, text) {
-      //   var tag
-      //     , nodeIndex
 
-      //   if (tagType === "r") {
-      //     tag = document.createElement("br")
+    _insertNewTag(tagType, text) {
+    //   var tag
+    //     , nodeIndex
 
-      //   } else {
-      //     tag = document.createElement("span")
-      //     tag.appendChild(document.createTextNode(text))
-      //   }
+    //   if (tagType === "r") {
+    //     tag = document.createElement("br")
 
-      //   nodeIndex = this.inputContext.after.node
-      //   if (oldLength && nodeIndex === this.inputContext.before.node) {
-      //     splitNode(this.inputContext.before.char)
-      //   }
+    //   } else {
+    //     tag = document.createElement("span")
+    //     tag.appendChild(document.createTextNode(text))
+    //   }
 
-      //   overlay.insertBefore(tag, overlay.childNodes[nodeIndex])
-      //   this.overlayNodes.splice(nodeIndex, 0, tag)
+    //   nodeIndex = this.inputContext.after.node
+    //   if (oldLength && nodeIndex === this.inputContext.before.node) {
+    //     splitNode(this.inputContext.before.char)
+    //   }
 
-      //   adjustChunkArray(nodeIndex, text, text.length, 0)
+    //   overlay.insertBefore(tag, overlay.childNodes[nodeIndex])
+    //   this.overlayNodes.splice(nodeIndex, 0, tag)
 
-      //   /**
-      //    * Splits the node at nodeIndex at charIndex. The existing node
-      //    * keeps the end of the text and a new node with the start of
-      //    * the text is inserted before it. The following are updated:
-      //    * - chunkArray
-      //    * - wordBorderArray
-      //    * - overlayNode
-      //    * - nodeIndex
-      //    *
-      //    * @param  {number}  charIndex  character index where node is
-      //    *                              to be split.
-      //    */
-      //   function splitNode(charIndex) {
-      //     var key = this.wordBorderArray[nodeIndex]
-      //     var text = this.chunkArray[key]
-      //     var split = text.substring(charIndex)
-      //     var text = text.substring(0, charIndex)
-      //     var node = this.overlayNodes[nodeIndex]
-      //     var tag = document.createElement("span")
-      //     tag.appendChild(document.createTextNode(text))
+    //   adjustChunkArray(nodeIndex, text, text.length, 0)
 
-      //     node.textContent = split
+    //   /**
+    //    * Splits the node at nodeIndex at charIndex. The existing node
+    //    * keeps the end of the text and a new node with the start of
+    //    * the text is inserted before it. The following are updated:
+    //    * - chunkArray
+    //    * - wordBorderArray
+    //    * - overlayNode
+    //    * - nodeIndex
+    //    *
+    //    * @param  {number}  charIndex  character index where node is
+    //    *                              to be split.
+    //    */
+    //   function splitNode(charIndex) {
+    //     var key = this.wordBorderArray[nodeIndex]
+    //     var text = this.chunkArray[key]
+    //     var split = text.substring(charIndex)
+    //     var text = text.substring(0, charIndex)
+    //     var node = this.overlayNodes[nodeIndex]
+    //     var tag = document.createElement("span")
+    //     tag.appendChild(document.createTextNode(text))
 
-      //     overlay.insertBefore(tag, node)
-      //     this.overlayNodes.splice(nodeIndex, 0, tag)
+    //     node.textContent = split
 
-      //     this.chunkArray[key] = text
-      //     this.chunkArray[key + text.length] = split
-      //     updateWordBorderArray()
+    //     overlay.insertBefore(tag, node)
+    //     this.overlayNodes.splice(nodeIndex, 0, tag)
 
-      //     nodeIndex += 1
-      //   }
-      // }
+    //     this.chunkArray[key] = text
+    //     this.chunkArray[key + text.length] = split
+    //     updateWordBorderArray()
 
-      /**
-       * updateTag
-       * 
-       * If type is "r(eturn)" then we need to add an additional <br>
-       * tag. Otherwise, we can insert `text` into the existing span
-       *
-       * @param  {object}  context  { index: charIndex
-       *                            , node: index of node
-       *                            , char: index of char within node
-       *                            , type: "w" | "W" | "r"
-       *                            }
-       * @param  {string}  text     Text to insert at context.char in
-       *                            node context.node
-       */
-      updateTag(context, text, type) {
-        var alteredNodeIndex = context.node
-        var node = this.overlayNodes[alteredNodeIndex]
-        var key  = wordBorderArray[alteredNodeIndex]
-        var content
+    //     nodeIndex += 1
+    }
 
-        if (type === "r") {
-          insertBreak()
-        } else {
-          insertTextIntoExistingSpan()
-        }
 
-        function insertBreak(argument) {
-          content = document.createElement("br")
-          overlay.insertBefore(content, node)
-          this.overlayNodes.splice(alteredNodeIndex, 0, content)
+    /**
+     * updateTag
+     *
+     * If type is "r(eturn)" then we need to add an additional <br>
+     * tag. Otherwise, we can insert `text` into the existing span
+     *
+     * @param  {object}  context  { index: charIndex
+     *                            , node: index of node
+     *                            , char: index of char within node
+     *                            , type: "w" | "W" | "r"
+     *                            }
+     * @param  {string}  text     Text to insert at context.char in
+     *                            node context.node
+     */
+    _updateTag(context, text, type) {
+      var alteredNodeIndex = context.node
+      var node = this.overlayNodes[alteredNodeIndex]
+      var key  = wordBorderArray[alteredNodeIndex]
+      var content
 
-          adjustChunkArray(alteredNodeIndex, text, text.length, 0)
-        }
-
-        function insertTextIntoExistingSpan() {
-          // Insert text into the existing span
-          content = this.chunkArray[key].splice(context.char, 0, text)
-          node.textContent = content
-
-          adjustChunkArray(alteredNodeIndex, content, text.length, 1)
-        }
+      if (type === "r") {
+        insertBreak()
+      } else {
+        insertTextIntoExistingSpan()
       }
 
-      // /**
-      //  * adjustChunkArray
-      //  * 
-      //  * When new text is added to a span, the starting index for the
-      //  * following spans need to be adjusted to account for the new
-      //  * text length. If text is added to a new span, 
-      //  *
-      //  * @param  {number}    alteredNodeIndex  index of node whose
-      //  *                                       text has changed
-      //  * @param  {<type>}    text              The revised text
-      //  * @param  {Function}  increment         number of chars added
-      //  * @param  {<type>}    offset            true when an existing
-      //  *                                       node is updated, so
-      //  *                                       only the following nodes
-      //  *                                       need to be adjusted. If
-      //  *                                       a new node is inserted
-      //  *                                       then the current node at
-      //  *                                       that position also needs
-      //  *                                       to be moved to make
-      //  *                                       space.
-      //  */
-      // adjustChunkArray(alteredNodeIndex,text,increment,offset) {
-      //   var alteredKey = this.wordBorderArray[alteredNodeIndex]
-      //   var key
-      //     , value
-      //     , ii
+      function insertBreak(argument) {
+        content = document.createElement("br")
+        overlay.insertBefore(content, node)
+        this.overlayNodes.splice(alteredNodeIndex, 0, content)
 
-      //   if (increment) {
-      //     alteredNodeIndex += offset
-      //     ii = this.wordBorderArray.length
+        this._adjustChunkArray(alteredNodeIndex, text, text.length, 0)
+      }
 
-      //     while (ii-- > alteredNodeIndex) {
-      //       key = this.wordBorderArray[ii]
-      //       value = this.chunkArray[key]
-      //       delete this.chunkArray[key]
-      //       this.chunkArray[key + increment] = value
-      //     }
-      //   }  
+      function insertTextIntoExistingSpan() {
+        // Insert text into the existing span
+        content = this.chunkArray[key].splice(context.char, 0, text)
+        node.textContent = content
 
-      //   this.chunkArray[alteredKey] = text
-
-      //   updateWordBorderArray()
-      // }
+        this._adjustChunkArray(alteredNodeIndex, content, text.length, 1)
+      }
+    }
 
 
-      // updateWordBorderArray() {
-      //   this.wordBorderArray = Object.keys(this.chunkArray) // strings
-      //               .map(function(string) { // convert to integers
-      //                return parseInt(string, 10)
-      //               })
-      //               .sort(function (a, b) { // sort numerically
-      //                 return a - b
-      //               })
-      // }
+    /**
+     * Sent by updateInputContext(), itself called by
+     *   a keyup or mouseup event (treatKeyUp) and setWordDetection()
+     *   
+     * If the user has moved the insertion caret inside a different
+     * word, then the acceptable, corpus (and out-of-range) lists are
+     * scrolled to show the current word. If the insertion caret has
+     * just left a word, then the colour of that word is reset.
+     *
+     * @param  {boolean}  isKeyInput  Indicates if the call was
+     *                                triggered by a key press.
+     */
+    _refreshDisplay(isKeyInput) {
+      let activeNodeIndex = this.inputContext.before.node
+      let activeIsWord = this.chunkTypeArray[activeNodeIndex] === "w"
+      let activeWord
 
-      
-      // refreshDisplay(isKeyInput) {
-      //   var activeNodeIndex = this.inputContext.before.node
-      //   var activeKey
-      //     , activeText
-      //     , outsideWord
-      //     , activeWordText
+      if (activeIsWord) {
+        activeWord = this.chunkArray[activeNodeIndex]
+      } else {
+        activeWord = ""
+        activeNodeIndex = -1
+      }
 
-      //   if (activeNodeIndex === this.activeWordIndex) {
-      //     if (activeNodeIndex < 0) {
-      //       // We're just starting up. Nothing to do.
-      //     } else if (isKeyInput) {
-      //       removeSpanStyle(this.activeWordIndex)
-      //     }
+      if (activeNodeIndex < 0 && this.activeNodeIndex < 0) {
+        // The insertion point is still outside any words. No need
+        // to scroll or colour anything.
+        return 
+      }
 
-      //     return
-      //   }
+      // Check for need to scroll: has the active word changed?      
+      if (activeIsWord && (activeWord !== this.activeWord)) {
+        this.panels.scrollTo(activeWord)
+      }
 
-      //   activeKey = this.wordBorderArray[activeNodeIndex]
-      //   activeText = this.chunkArray[activeKey]
-      //   outsideWord = _W.test(activeText) || _rn.test(activeText)
+      this.activeWord = activeWord
 
-      //   if (this.activeWordIndex === -1) {
-      //     // We haven't just left a word, but we might have entered one
-      //     setActiveWordIndex(activeNodeIndex, isKeyInput)
-      //     return
-      //   }
+      // Check for colour changes
+      if (activeNodeIndex !== this.activeNodeIndex) {
+        if (activeNodeIndex > -1) {
+          this._removeNodeStyle(activeNodeIndex)
+        }
 
-      //   activeWordText = this.chunkArray[this.wordBorderArray[this.activeWordIndex]]
+        if (this.activeNodeIndex > -1) {
+          this._recolourWordNode(this.activeNodeIndex)
+        }
 
-      //   scrollLists(activeWordText)
-      //   setColour(this.activeWordIndex, activeWordText)
-
-      //   setActiveWordIndex(outsideWord ? -1 : activeNodeIndex)
-
-
-      //   function setActiveWordIndex(nodeIndex, dontScroll) {
-      //     var index = nodeIndex < 0 ? this.activeWordIndex : nodeIndex
-      //     var nodeKey = this.wordBorderArray[index]
-      //     var word = this.chunkArray[nodeKey]
-
-      //     if (!dontScroll) {
-      //       scrollLists(word)
-      //     }
-
-      //     this.activeWordIndex = nodeIndex
-      //   }
+        this.activeNodeIndex = activeNodeIndex
+      }      
+    }
 
 
-      //   function removeSpanStyle(nodeIndex) {
-      //     var span = this.overlayNodes[nodeIndex]
-      //     span.style.color = null
-      //   }
+    _recolourWordNode(nodeIndex) {
+      let node = this.overlayNodes[nodeIndex]
+      let text = node.innerHTML
+      let colour = this.corpus.getWordColour(text)
+
+      console.log("recolour", text)
+
+      node.style.color = colour
+    }
 
 
-      //   function setColour(nodeIndex, word) {
-      //     var span = this.overlayNodes[nodeIndex]
-      //     var frequencyIndex = getFrequency(word)
+    _removeNodeStyle(nodeIndex) {
+      let node = this.overlayNodes[nodeIndex]
+      node.style.color = null
 
-      //     colourItem(frequencyIndex, span)
-      //   }
-      // }
-    // 
+      console.log("remove colour", node.innerText)
+    }
   }
 
 
   lx.InputManager = InputManager
-  
+
 })(window.lexogram)

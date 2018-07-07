@@ -12,7 +12,7 @@
 
   
 
-  class Corpus {
+  class CorpusSource {
     constructor (callback) {
       this.callback = callback
     }
@@ -44,10 +44,10 @@
 
       return "Setting language to Russian..."
     }
-}
+  }
 
 
 
-      lx.Corpus = Corpus
+  lx.CorpusSource = CorpusSource
       
-    })(window.lexogram)
+})(window.lexogram)

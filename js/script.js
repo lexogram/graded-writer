@@ -153,11 +153,10 @@
       let red
 
       if (index < 0) {
-        index = this.ordered.length
-      }
-
-      if (index > this.target * 2) {
-        red = "#f09" // actually purple
+        // index = this.ordered.length
+        red = "#c0f"
+      } else if (index > this.target * 2) {
+        red = "#f0c" // actually purple
 
       } else if (index < this.target) {
         red = "#000" // black
@@ -176,7 +175,7 @@
 
 
     getWordColour(word) {
-      let index = this.ordered.indexOf(word)
+      let index = this.ordered.indexOf(word.toLowerCase())
       let colour = this.getColour(index)
 
       return colour
@@ -189,10 +188,10 @@
    * Assumes that the HTML page contains (un)ordered lists with the
    * ids "ordered", "acceptable", and "out-of-range"
    *
-   * @class      ControlPanels (name)
+   * @class      Panels (name)
    */
-  class ControlPanels {
-    constructor(corpus, inputManager, elementIds) {
+  class Panels {
+    constructor(corpus, elementIds) {
       this.corpus = corpus
       this.createlists(elementIds)
       // creates;
@@ -213,10 +212,10 @@
 
       options.id = elementIds.acceptable
       options.type = "ul"
-      this.acceptable = new WordList(options)
+      this.acceptable = new AlphabeticalList(options)
 
       options.id = elementIds.outOfRange
-      this.outOfRange = new WordList(options)
+      this.outOfRange = new AlphabeticalList(options)
     }
 
 
@@ -224,6 +223,13 @@
       this.ordered.updateList()
       this.acceptable.updateList()    
       this.outOfRange.updateList()
+    }
+
+
+    scrollTo(word) {
+      this.acceptable.scrollTo(word)
+      this.outOfRange.scrollTo(word)
+      this.ordered.scrollTo(word)
     }
   }
 
@@ -241,11 +247,11 @@
     }
 
 
-    updateList() {
+    updateList(ignoreHack) {
       this.corpus.setListItems(this.name, this.element)
 
       // HACK to indicate how many words are in the ordered list
-      if (this.name === "ordered") {
+      if (!ignoreHack) {
         let p = this.element.parentNode.querySelector("p")
         if (p) {
           let count = this.corpus.getWordCount()
@@ -256,24 +262,29 @@
 
 
     scrollTo(word) {
-      let frequencyIndex = this.corpus.getFrequency(word)
-      
-      if (frequencyIndex < 0) {
+      let index = this.corpus.getFrequency(word)
+
+      this._scrollToIndex(index)
+    }
+
+
+    _scrollToIndex(index) {     
+      if (index < 0) {
         // No such word: we can't scroll to it.
         // TO DO: Show an alert in the toolbar?
         return
       }
       
-      if (highLitLi) {
-        highLitLi.classList.remove("highlight")
+      if (this.highLitLi) {
+        this.highLitLi.classList.remove("highlight")
       }
-      highLitLi = ol.children[frequencyIndex]
+      this.highLitLi = this.element.children[index]
 
-      scrollIntoView(highLitLi)
+      this._scrollIntoView(this.highLitLi)
     } 
 
 
-    scrollIntoView(node) {
+    _scrollIntoView(node) {
       var rect = node.getBoundingClientRect()
       var top  = rect.top
       var bottom = rect.bottom
@@ -285,18 +296,37 @@
 
       if (topAdjust > 0) {
         adjust = topAdjust
-        parentNode.scrollTop -= adjust
 
       } else if (adjust < 0) {
         adjust = Math.max(adjust, topAdjust)
-        parentNode.scrollTop -= adjust
       }
+      
+      parentNode.scrollTop -= adjust
 
-      highLitLi.classList.add("highlight")
+      node.classList.add("highlight")
     }
   }
 
 
+  class AlphabeticalList extends WordList {
+    updateList() {
+      super.updateList(true)
+
+      let getInnerText = (element) => {
+        return element.innerText.toLowerCase()
+      }
+      let children = [].slice.apply(this.element.children) // li elements
+
+      this.alphabeticalArray = children.map(getInnerText)
+    }
+
+
+    scrollTo(word) {
+      let index = this.alphabeticalArray.indexOf(word)
+
+      this._scrollToIndex(index)
+    } 
+  }
 
   /* TESTS */
       // ;(function TESTS(){
@@ -389,7 +419,7 @@
 
 
   class GradedWriter {
-    constructor(CorpusSource, InputManager, trackActions, shortcuts) {
+    constructor(CorpusSource, InputManager, undoRedo) {
       let defaults = localStorage.getItem("graded-writer")
                   || { languageCode: "ru", target: 500 }
 
@@ -404,7 +434,7 @@
       // HARD-CODED >>>
 
       // The Corpus Select and Target elements needs to inform the
-      // Corpus, InputManager and ControlPanels instances
+      // Corpus, InputManager and Panels instances
       // that the display is to change, so they need to be controlled
       // at this highest level. However, initialization can not
       // complete until we have corpus data
@@ -414,14 +444,16 @@
       this.initializeTarget(defaults.target)
 
       let corpus = this.corpus = new Corpus()
-      let input = this.inputManager = new InputManager( corpus
-                                                      , trackActions
-                                                      , shortcuts
-                                                      )
-      this.controlPanels = new ControlPanels( corpus
-                                            , input
-                                            , elementIdMap
-                                            )
+
+      let panels = this.panels = new Panels( corpus
+                                           , elementIdMap
+                                           )
+      // The inputManager needs to be able to call this.scrollTo
+      // when the insertion point moves into or out of a word.
+      this.inputManager = new InputManager( corpus
+                                          , undoRedo
+                                          , panels
+                                          )
 
       let callback = this.callbackWith.bind(this)
       this.corpusSource = new CorpusSource(callback)
@@ -487,7 +519,7 @@
       this.targetField.value = target
 
       this.inputManager.setTarget(target)
-      this.controlPanels.setTarget(target)
+      this.panels.setTarget(target)
     }
 
 
@@ -507,15 +539,16 @@
 
       this.targetRange.max = languageData.corpus.length / 2
       this.setTarget(this.target)
+
+      this.inputManager.load("Мне было тогда лет двадцать пять, — начал Н.Н. — давно это было. Я уехал за границу, я хотел посмотреть на мир. Я был здоров, молод, весел, деньги у меня были — я делал, что хотел.")
     }
   }
 
 
   lx.gradedWriter = new GradedWriter(
-    lx.Corpus
+    lx.CorpusSource
   , lx.InputManager
-  , lx.trackActions
-  , lx.shortcuts
+  , lx.undoRedo
   )
 
 

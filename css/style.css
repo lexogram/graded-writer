@@ -71,18 +71,20 @@ form {
   background-color: #fff;
 }
 
+div#feedback{
+  /*width: 100%;*/
+  top: 3em;
+  height: calc(100% - 3em);
+}
+
 #feedback p {
   height: 1em;
   text-align: center;
   font-weight: bold;
   font-size: 1.2em;
   margin: 0.7em 0;
-}
 
-div#feedback{
-  /*width: 100%;*/
-  top: 3em;
-  height: calc(100% - 3em);
+  display: none;
 }
 
 ul,

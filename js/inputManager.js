@@ -372,10 +372,6 @@
 
       feedback.innerHTML = lexogram.prettify(this.inputContext, true)
 
-      if (!event) {
-
-      }
-
       this._refreshDisplay(isKeyInput)
     }
 
@@ -892,7 +888,13 @@
       if (!type) {
         // The event is a modifier keypress
         return false
-      } else if (type === "r") {
+      } else if (type === "a") {
+        // Arrow key: no processing required
+        return true
+      } 
+
+      if (type === "r") {
+        // Special case
         key = String.fromCharCode(10) // was "Enter"
         type = "W"
       }
@@ -905,7 +907,7 @@
         } 
       }
 
-     this._treatInput(type, key)
+      this._treatInput(type, key)
 
       return true
     }
@@ -927,9 +929,19 @@
      */
     _getType(key, keyCode) {
       switch (keyCode) {
+        // Arrow keys
+        case 37:
+        case 38:
+        case 39:
+        case 40:
+          return "a"
+
+        // Return keys
         case 10:
         case 13:
           return "r" // key will be changed to "↵", type to "W"
+
+        // Delete and Backspace
         case 8:
           return "b" // backspace
         case 46:

@@ -81,9 +81,9 @@
       this.overlay = document.querySelector(overlaySelector)
       this.overlayNodes = []
 
-      this.lineBreakRegex = /[\r|\r\n|\n]+/g // line break on any platform
-      // var _W = /[\s!-\/:-@[-`{-~\u00A0-¾—-⁊$]/ // any non-word character
-                                                //
+      // Detect line breaks on any platform
+      this.lineBreakRegex = /[\r|\r\n|\n]+/g
+                                            
       // this.wordBorderArray  = [0]
       // this.chunkArray       = [""]
       // this.chunkTypeArray   = ["$"]
@@ -256,7 +256,7 @@
       let paragraphArray = this._getParagraphArray(text, insertPoint)
       // return console.log(lexogram.prettify(paragraphArray))
       let insertArrayMap = this._getInsertArrayMap(paragraphArray)
-      //return console.log(insertArrayMap)
+      // return console.log(insertArrayMap)
 
       let nodeIndex = this._electivelySplitAt(insertPoint)
       this._shiftSubsequentSpans(nodeIndex, length)
@@ -426,9 +426,122 @@
       } else {
         this._insertNewTag(type, key)
       }
-
-      // Colour word(s) if switching to non-word
     }
+
+
+    _insertNewTag(tagType, text) {
+      var tag
+        , nodeIndex
+
+      if (tagType === "r") {
+        tag = document.createElement("br")
+
+      } else {
+        tag = document.createElement("span")
+        tag.appendChild(document.createTextNode(text))
+      }
+
+      nodeIndex = this.inputContext.after.node
+      if (oldLength && nodeIndex === this.inputContext.before.node) {
+        splitNode(this.inputContext.before.char)
+      }
+
+      overlay.insertBefore(tag, overlay.childNodes[nodeIndex])
+      this.overlayNodes.splice(nodeIndex, 0, tag)
+
+      adjustChunkArray(nodeIndex, text, text.length, 0)
+
+      /**
+       * Splits the node at nodeIndex at charIndex. The existing node
+       * keeps the end of the text and a new node with the start of
+       * the text is inserted before it. The following are updated:
+       * - chunkArray
+       * - wordBorderArray
+       * - overlayNode
+       * - nodeIndex
+       *
+       * @param  {number}  charIndex  character index where node is
+       *                              to be split.
+       */
+      function splitNode(charIndex) {
+        var key = this.wordBorderArray[nodeIndex]
+        var text = this.chunkArray[key]
+        var split = text.substring(charIndex)
+        var text = text.substring(0, charIndex)
+        var node = this.overlayNodes[nodeIndex]
+        var tag = document.createElement("span")
+        tag.appendChild(document.createTextNode(text))
+
+        node.textContent = split
+
+        overlay.insertBefore(tag, node)
+        this.overlayNodes.splice(nodeIndex, 0, tag)
+
+        this.chunkArray[key] = text
+        this.chunkArray[key + text.length] = split
+        updateWordBorderArray()
+
+        nodeIndex += 1
+      }
+    }
+
+
+    /**
+     * updateTag
+     *
+     * If type is "r(eturn)" then we need to add an additional <br>
+     * tag. Otherwise, we can insert `text` into the existing span
+     *
+     * @param  {object}  context  { index: charIndex
+     *                            , node: index of node
+     *                            , char: index of char within node
+     *                            , type: "w" | "W" | "r"
+     *                            }
+     * @param  {string}  text     Text to insert at context.char in
+     *                            node context.node
+     */
+    _updateTag(context, text, type) {
+      if (type === "r") {
+        this._insertBreak(context, text)
+      } else {
+        this._insertTextIntoExistingSpan(context, text)
+      }
+    }
+      
+
+    _insertBreak(context, breakChar) {
+      var alteredNodeIndex = context.node
+      var node = this.overlayNodes[alteredNodeIndex]
+      var border  = this.wordBorderArray[alteredNodeIndex]
+      var element = document.createElement("span")
+
+      element.innerText = breakChar
+
+      this.overlay.insertBefore(element, node)
+      this.overlayNodes.splice(alteredNodeIndex, 0, element)
+
+      this.wordBorderArray.splice(alteredNodeIndex, 0, border)
+      this.chunkTypeArray.splice(alteredNodeIndex, 0, "r")
+      this.chunkArray.splice(alteredNodeIndex, 0, breakChar)
+
+      this._shiftSubsequentSpans(alteredNodeIndex + 1, 1)
+    }
+
+
+   _insertTextIntoExistingSpan(context, text) {
+      var alteredNodeIndex = context.node
+      var node = this.overlayNodes[alteredNodeIndex]
+      var border = this.wordBorderArray[alteredNodeIndex]
+      var chunk = this.chunkArray[alteredNodeIndex]
+
+      // Insert text into the existing span
+      chunk = chunk.splice(context.char, 0, text)
+      node.innerText = chunk
+      this.chunkArray[alteredNodeIndex] = chunk
+
+      this._shiftSubsequentSpans(alteredNodeIndex + 1, text.length)
+    }
+
 
       // 1. Uncolour word
       //  + scroll to this word
@@ -490,6 +603,18 @@
         })
       }
 
+      let addBreaks = (start, chunk) => {
+        let total = chunk.length
+
+        for ( let ii = 0; ii < total; ii += 1 ) {  
+          array.push({
+            index: index + ii + insertPoint
+          , chunk: "\n"
+          , type: "r"
+          }) 
+        }
+      }
+
       while (lineBreakData = this.lineBreakRegex.exec(text)) {
         // [ "↵"
         // , index: <positive integer>
@@ -502,11 +627,7 @@
           addText(start, index)
         }
 
-        array.push({
-          index: index + insertPoint
-        , chunk: chunk
-        , type: "r"
-        })
+        addBreaks(index, chunk)
 
         start = index + chunk.length
       }
@@ -551,6 +672,7 @@
       let addLinebreakToInsertArrayMap = (chunkData) => {
         wordBorderArray.push(chunkData.index)
         chunkArray.push(chunkData.chunk)
+        console.log(chunkData.chunk.charCodeAt(0))
         chunkTypeArray.push("r")
       }
 
@@ -815,10 +937,12 @@
         span = document.createElement("span")
         chunk = chunkArray[ii]
         span.innerText = chunk
+
         if (chunkTypeArray[ii] === "w") {
           colour = this.corpus.getWordColour(chunk)
           span.style = "color:" + colour
         }
+
         this.overlayNodes.splice(ii, 0, span)
         this.overlay.insertBefore(span, nextSibling)
       }
@@ -866,7 +990,7 @@
         // The event is a modifier keypress
         return false
       } else if (type === "r") {
-        key = String.fromCharCode(13) // was "Enter
+        key = String.fromCharCode(10) // was "Enter
       }
 
       if (this.inputContext.selectCount) {
@@ -922,11 +1046,14 @@
       //                    ————————\———————
       //              false \  "W"  \  "w"
 
-      let isWord = this.regex.test(key)
+      // Ensure that the regex is reset, or it might wrongly
+      // return false
+      this.regex.lastIndex = 0
+      let isWord = (this.regex.test(key))
                  ? this.findWords
                  : !this.findWords
 
-      return isWord ? "W" : "w"
+      return isWord ? "w" : "W"
     }
 
 
@@ -953,106 +1080,6 @@
       }
 
       return "\"" + text + "\""
-    }
-
-
-    _insertNewTag(tagType, text) {
-    //   var tag
-    //     , nodeIndex
-
-    //   if (tagType === "r") {
-    //     tag = document.createElement("br")
-
-    //   } else {
-    //     tag = document.createElement("span")
-    //     tag.appendChild(document.createTextNode(text))
-    //   }
-
-    //   nodeIndex = this.inputContext.after.node
-    //   if (oldLength && nodeIndex === this.inputContext.before.node) {
-    //     splitNode(this.inputContext.before.char)
-    //   }
-
-    //   overlay.insertBefore(tag, overlay.childNodes[nodeIndex])
-    //   this.overlayNodes.splice(nodeIndex, 0, tag)
-
-    //   adjustChunkArray(nodeIndex, text, text.length, 0)
-
-    //   /**
-    //    * Splits the node at nodeIndex at charIndex. The existing node
-    //    * keeps the end of the text and a new node with the start of
-    //    * the text is inserted before it. The following are updated:
-    //    * - chunkArray
-    //    * - wordBorderArray
-    //    * - overlayNode
-    //    * - nodeIndex
-    //    *
-    //    * @param  {number}  charIndex  character index where node is
-    //    *                              to be split.
-    //    */
-    //   function splitNode(charIndex) {
-    //     var key = this.wordBorderArray[nodeIndex]
-    //     var text = this.chunkArray[key]
-    //     var split = text.substring(charIndex)
-    //     var text = text.substring(0, charIndex)
-    //     var node = this.overlayNodes[nodeIndex]
-    //     var tag = document.createElement("span")
-    //     tag.appendChild(document.createTextNode(text))
-
-    //     node.textContent = split
-
-    //     overlay.insertBefore(tag, node)
-    //     this.overlayNodes.splice(nodeIndex, 0, tag)
-
-    //     this.chunkArray[key] = text
-    //     this.chunkArray[key + text.length] = split
-    //     updateWordBorderArray()
-
-    //     nodeIndex += 1
-    }
-
-
-    /**
-     * updateTag
-     *
-     * If type is "r(eturn)" then we need to add an additional <br>
-     * tag. Otherwise, we can insert `text` into the existing span
-     *
-     * @param  {object}  context  { index: charIndex
-     *                            , node: index of node
-     *                            , char: index of char within node
-     *                            , type: "w" | "W" | "r"
-     *                            }
-     * @param  {string}  text     Text to insert at context.char in
-     *                            node context.node
-     */
-    _updateTag(context, text, type) {
-      var alteredNodeIndex = context.node
-      var node = this.overlayNodes[alteredNodeIndex]
-      var key  = wordBorderArray[alteredNodeIndex]
-      var content
-
-      if (type === "r") {
-        insertBreak()
-      } else {
-        insertTextIntoExistingSpan()
-      }
-
-      function insertBreak(argument) {
-        content = document.createElement("br")
-        overlay.insertBefore(content, node)
-        this.overlayNodes.splice(alteredNodeIndex, 0, content)
-
-        this._adjustChunkArray(alteredNodeIndex, text, text.length, 0)
-      }
-
-      function insertTextIntoExistingSpan() {
-        // Insert text into the existing span
-        content = this.chunkArray[key].splice(context.char, 0, text)
-        node.textContent = content
-
-        this._adjustChunkArray(alteredNodeIndex, content, text.length, 1)
-      }
     }
 
 

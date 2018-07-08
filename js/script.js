@@ -8,19 +8,10 @@
 
 ;(function (lx){
 
-  var overlayNodes = []
-  var highLitLi = 0
-
-  // Regex
-  var _rn = /[\r|\r\n|\n]/ // line break on any platform
-  var _W = /[\s!-\/:-@[-`{-~\u00A0-¾—-⁊$]/ // any non-word character
-
   /* POLYFILLS and HACKS */
     // http://stackoverflow.com/a/4314050/1927589
     if (!String.prototype.splice) {
       /**
-       * {JSDoc}
-       *
        * The splice() method changes the content of a string by
        * removing a range of characters and/or adding new characters.
        *
@@ -51,14 +42,15 @@
 
 
   class Corpus {
-    constructor(options) {
+    constructor(minTarget) {
+      this.minTarget = minTarget
+
       this.ordered = []
       this.acceptable = []
       this.outOfRange = []
 
       // <<<HARD-CODED
       this.redMin = 102 // #600
-      this.minTarget = 500
       // HARD-CODED >>>
 
       this.target = this.minTarget
@@ -263,8 +255,13 @@
 
     scrollTo(word) {
       let index = this.corpus.getFrequency(word)
+      let success = this._scrollToIndex(index)
 
-      this._scrollToIndex(index)
+      if (!success) {
+        // Try a case-insensitive match
+        index = this.corpus.getFrequency(word.toLowerCase())
+        this._scrollToIndex(index)
+      }
     }
 
 
@@ -272,7 +269,7 @@
       if (index < 0) {
         // No such word: we can't scroll to it.
         // TO DO: Show an alert in the toolbar?
-        return
+        return false
       }
       
       if (this.highLitLi) {
@@ -281,6 +278,8 @@
       this.highLitLi = this.element.children[index]
 
       this._scrollIntoView(this.highLitLi)
+
+      return true
     } 
 
 
@@ -323,8 +322,13 @@
 
     scrollTo(word) {
       let index = this.alphabeticalArray.indexOf(word)
+      let success = this._scrollToIndex(index)
 
-      this._scrollToIndex(index)
+      if (!success) {
+        // Try a case-insensitive match
+        index = this.alphabeticalArray.indexOf(word.toLowerCase())
+        this._scrollToIndex(index)
+      }
     } 
   }
 
@@ -422,6 +426,7 @@
     constructor(CorpusSource, InputManager, undoRedo) {
       let defaults = localStorage.getItem("graded-writer")
                   || { languageCode: "ru", target: 500 }
+      let minTarget = 250
 
       // <<< HARD-CODED ids of HTML elements 
       let elementIdMap = {
@@ -441,9 +446,9 @@
 
       this.shiftDown = this.initializeShiftDetector()
 
-      this.initializeTarget(defaults.target)
+      this.initializeTarget(defaults.target, minTarget)
 
-      let corpus = this.corpus = new Corpus()
+      let corpus = this.corpus = new Corpus(minTarget)
 
       let panels = this.panels = new Panels( corpus
                                            , elementIdMap
@@ -474,10 +479,10 @@
     }
 
 
-    initializeTarget(defaultTarget) {
+    initializeTarget(defaultTarget, minTarget) {
       // <<< HARD-CODED
       let rangeSelector = "#target input[type=range]"
-      let fieldSelector = "#target input[type=text]"   
+      let fieldSelector = "#target input[type=text]" 
       this.step = 250
       this.shiftStep = 50
       // HARD-CODED >>>
@@ -486,7 +491,7 @@
       this.targetRange = document.querySelector(rangeSelector)
       this.targetRange.max = defaultTarget
       this.targetRange.value = defaultTarget
-      this.targetRange.min = this.step
+      this.targetRange.min = minTarget
 
       this.targetField = document.querySelector(fieldSelector)
       this.targetField.value = defaultTarget
@@ -508,18 +513,21 @@
     }
 
 
-    setTarget(value) {
+    setTarget(value, ignoreChange) {
       let target = this.corpus.setTarget(value)
       if (!target) {
+        this.setTarget(this.target, true)
         return console.log("Target value could not be set:", value)
       }
 
-      this.target = target
       this.targetRange.value = target
       this.targetField.value = target
 
-      this.inputManager.setTarget(target)
-      this.panels.setTarget(target)
+      if (!ignoreChange) {
+        this.inputManager.setTarget(target)
+        this.panels.setTarget(target)
+        this.target = target
+      }
     }
 
 
@@ -540,7 +548,7 @@
       this.targetRange.max = languageData.corpus.length / 2
       this.setTarget(this.target)
 
-      this.inputManager.load("Мне было тогда лет двадцать пять, — начал Н.Н. — давно это было. Я уехал за границу, я хотел посмотреть на мир. Я был здоров, молод, весел, деньги у меня были — я делал, что хотел.")
+      this.inputManager.load("Мне было тогда лет двадцать пять, — начал Н.Н. — давно это было. Я уехал за границу, я хотел посмотреть на мир.\n\nЯ был здоров, молод, весел, деньги у меня были — я делал, что хотел.")
     }
   }
 

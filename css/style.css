@@ -117,7 +117,8 @@ div#out-of-range{
   left: 12.5em;
 }
 
-#ordered li.highlight {
+#ordered li.highlight,
+#acceptable li.highlight {
   background-color: rgba(255,0,0,0.2);
   font-weight: bold;
 }

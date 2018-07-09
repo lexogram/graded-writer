@@ -253,6 +253,7 @@
       }
 
       let insertArrayMap = this._getInsertMap(text, insertPoint)
+      let insertSpanCount = insertArrayMap.chunkArray.length
 
       let nodeIndex = this._electivelySplitAt(insertPoint)
       this._shiftSubsequentSpans(nodeIndex, length)
@@ -261,7 +262,7 @@
       this._insertSpans(nodeIndex, insertArrayMap)
       this._insertArrays(nodeIndex, insertArrayMap)
 
-      this._electivelyMergeTerminalSpans()
+      this._electivelyMergeTerminalSpans(insertSpanCount)
     }
 
 
@@ -622,7 +623,21 @@
 
     
     _pruneNode() {
+      let nodeIndex = this.inputContext.before.node
+      let start = this.inputContext.before.char
+      let end = this.inputContext.after.char
+      let adjust = start - end
+      let chunk = this.chunkArray[nodeIndex]
 
+      chunk = chunk.substring(0, start) + chunk.substring(end)
+      this.chunkArray[nodeIndex] = chunk
+      this.overlayNodes[nodeIndex].innerText = chunk
+
+      this.inputContext.after = JSON.parse(
+                                  JSON.stringify(
+                                    this.inputContext.before
+                                  )
+                                )
     }
 
 
@@ -947,8 +962,43 @@
     }
 
 
-    _electivelyMergeTerminalSpans() {
+    _electivelyMergeTerminalSpans(insertedSpanCount) {
+      let before = this.inputContext.before
 
+      if (!before) {
+        return
+      }
+
+      let startNode = before.node
+      let endNode = startNode + insertedSpanCount + 1
+      let endType = this.chunkTypeArray[endNode]
+
+      let  type = this.chunkTypeArray[endNode - 1]
+      if (type === endType) {
+        this._mergeNodes(endNode - 1, endNode)
+      }
+
+      type = this.chunkTypeArray[startNode + 1]
+      if (type === before.type) {
+        this._mergeNodes(startNode, startNode + 1)
+      }
+    }
+
+
+    _mergeNodes(first, second) {
+      let chunk = this.chunkArray[first] + this.chunkArray[second]
+      let deleteNode = this.overlayNodes[second]
+      this.overlayNodes[first].innerText = chunk
+      this.chunkArray[first] = chunk
+
+      this.overlay.removeChild(deleteNode)
+
+      this.chunkArray.splice(second, 1)
+      this.chunkTypeArray.splice(second, 1)
+      this.wordBorderArray.splice(second, 1)
+      this.overlayNodes.splice(second, 1)
+
+      // No renumbering because there is no change of length
     }
 
 

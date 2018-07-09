@@ -280,9 +280,12 @@
      * _postProcessKeyUp()
      */
     cut (start, end) {
-      let ignoreUndo = !isNaN(start)
+      let ignoreUndo = !isNaN(start) // call came from UndoAction
 
-      this._setInputContext(start, end)
+      if (ignoreUndo) {
+        // Create the selection manually
+        this._setInputContext(start, end)
+      }
 
       if (!this.inputContext.selectCount) {
         return
@@ -292,7 +295,7 @@
         start = this.inputContext.before.index
         end = this.inputContext.after.index
 
-        let text = this.input.value.substring(start, end)
+        let text = this.inputContext.selection
         let snippet = this._getSnippet(text)
 
         let undoData = {
@@ -583,11 +586,13 @@
 
       let before = this._getInsertionContext(start)
       let after  = this._getInsertionContext(end, true)
+      let text   = this.input.value.substring(start, end)
 
       this.inputContext = {
         before: before
       , after:  after
       , selectCount: end - start
+      , selection: text
       }
     }
 

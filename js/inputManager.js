@@ -24,6 +24,8 @@
  *   - Create LUT to look for frequency index whether accented or not
  * - Thai
  *   - Word delimitation
+ *   
+ * Use localizedString for tooltips
  */
 
 
@@ -76,7 +78,6 @@
       // <<< HARD-CODED
       let inputSelector = "#input textarea"
       let overlaySelector = "#input p"
-      this.snippetLength = 15
       // HARD-CODED >>>
 
       this.input = document.querySelector(inputSelector)
@@ -101,7 +102,7 @@
       // Key and mouse events
       let listener = this.treatKeyUp.bind(this)
       this.input.addEventListener("keyup", listener, true)
-      listener = this.updateInputContext.bind(this)
+      listener = this.changeInsertionRoot.bind(this)
       this.input.addEventListener("mouseup", listener, true)
 
       listener = this.interceptPaste.bind(this)
@@ -235,18 +236,22 @@
 
       if (!ignoreUndo) {
         let endPoint = insertPoint + length
-        let snippet = this._getSnippet(text)
+
+        let undoSub = (length === 1)
+                    ? insertPoint
+                    : insertPoint + " - " + endPoint
 
         let undoData = {
           type: "paste"
+        , text: text
         , redoFunction: this.paste.bind(this)
         , redoData: [text, insertPoint]
-        , redoTip: "Paste " + length + " chars"
-                 + "\n" + snippet
+        , redoTip: "redoPasteTip" // "Paste %0 [%0, char]"
+        , redoSub: { "%0": length }
         , undoFunction: this.cut.bind(this)
         , undoData: [insertPoint, endPoint]
-        , undoTip: "Cut chars " + insertPoint + "-" + endPoint
-                 + "\n" + snippet
+        , undoTip: "undoPasteTip" // "Cut chars %0"
+        , undoSub: { "%0": length, "%1": undoSub }
         }
 
         this.undoRedo.track(undoData)
@@ -280,7 +285,7 @@
      * All the above will be undefined if the call came from 
      * _postProcessKeyUp()
      */
-    cut (start, end) {
+    cut(start, end) {
       let ignoreUndo = !isNaN(start) // call came from UndoAction
 
       if (ignoreUndo) {
@@ -297,18 +302,16 @@
         end = this.inputContext.after.index
 
         let text = this.inputContext.selection
-        let snippet = this._getSnippet(text)
 
         let undoData = {
           type: "cut"
+        , text: text
         , redoFunction: this.cut.bind(this)
         , redoData: [start, end]
         , redoTip: "Cut chars " + start + "-" + end
-                 + "\n" + snippet
         , undoFunction: this.paste.bind(this)
         , undoData: [text, start]
         , undoTip: "Restore text"
-                 + "\n" + snippet
         }
 
         this.undoRedo.track(undoData)
@@ -351,6 +354,24 @@
       if (processed) {
         this.updateInputContext(event)
       }
+    }
+
+
+    changeInsertionRoot(event) {
+      this._setInputContext()
+
+      if (this.inputContext.selectCount === 0) {
+        let undoData = {
+          type: "fix"
+        , fixPoint: this.inputContext.before.index
+        }
+
+        this.undoRedo.track(undoData)
+
+        console.log("FIX: fixPoint =", undoData.fixPoint)
+      }
+
+      this._refreshDisplay(isKeyInput)
     }
 
 
@@ -421,9 +442,14 @@
 
 
     /**
-     * @param  <"w" | "W">  type
+     * Called by _treatInput(), itself called by _postProcessKeyUp()
+     * following a treatKeyUp() event
+     * 
+     * @param  {"w" | "W"}  type
      *     This indicates whether the character to insert is a word
      *     or a non-Word character.
+     * @param  {string}   key
+     *     A single printable character  
      */
     _insert(type, key) {
       let before = this.inputContext.before
@@ -447,6 +473,21 @@
 
         this._insertNewSpan(type, key)
       }
+
+      let insertPoint = after.index
+      let undoData = {
+        type: "type"
+      , redoFunction: this.paste.bind(this)
+      , redoData: [key, insertPoint]
+      , redoTip: "Type 1 char"
+      , undoFunction: this.cut.bind(this)
+      , undoData: [insertPoint, insertPoint + 1]
+      , undoTip: "Delete char at " + insertPoint
+      }
+
+      this.undoRedo.track(undoData) 
+
+      console.log("FIX: fixPoint =", undoData.fixPoint)
     }
 
 
@@ -988,6 +1029,7 @@
     _mergeNodes(first, second) {
       let chunk = this.chunkArray[first] + this.chunkArray[second]
       let deleteNode = this.overlayNodes[second]
+
       this.overlayNodes[first].innerText = chunk
       this.chunkArray[first] = chunk
 
@@ -1020,8 +1062,9 @@
         // The event is a modifier keypress
         return false
       } else if (type === "a") {
-        // Arrow key: no processing required
-        return true
+        // Arrow key: no text processing required
+        this.changeInsertionRoot()
+        return false
       } 
 
       // Treat special case
@@ -1106,32 +1149,6 @@
 
 
     /**
-     * Called by paste() and cut()
-     *
-     * @param   {string}  text   A string which may be any length
-     * 
-     * @return  {string}         Returns a string with a maximum
-     *                           length of this.snippetLength * 2 + 5
-     *                           If text is longer than this, the 
-     *                           middle chunk will be replaced with
-     *                           " ... "
-     */
-    _getSnippet(text) {
-      if (/^\s*$/.test(text)) {
-        return "<whitespace>"
-      }
-
-      if (text.length > this.snippetLength * 2 + 5) {
-        text = text.substring(0, this.snippetLength)
-             + " ... "
-             + text.substring(text.length - this.snippetLength)
-      }
-
-      return "\"" + text + "\""
-    }
-
-
-    /**
      * Sent by updateInputContext(), itself called by
      *   a keyup or mouseup event (treatKeyUp) and setWordDetection()
      *   
@@ -1141,7 +1158,8 @@
      * just left a word, then the colour of that word is reset.
      *
      * @param  {boolean}  isKeyInput  Indicates if the call was
-     *                                triggered by a key press.
+     *                                triggered by a visible key press
+     *                                NOTE: not currently used
      */
     _refreshDisplay(isKeyInput) {
       let activeNodeIndex = this.inputContext.before.node

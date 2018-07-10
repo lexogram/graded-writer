@@ -15,6 +15,10 @@
   class UndoAction {
     constructor (data) {
       this.data = data 
+
+      // <<< HARD-CODED
+      this.snippetLength = 15
+      // HARD-CODED >>>
     }
 
 
@@ -36,8 +40,25 @@
     }
 
 
-    getTip(type) {
-      return this.data[type + "Tip"]
+    /**
+     * Gets a tooltip to show in an undo selector
+     *
+     * @param      {string}  type     "undo" || "redo"
+     * @param      {<type>}  oneLine  if falsy, 
+     * @return     {string}  The tip.
+     */
+    getTip(type, oneLine) {
+      let tip = this.data[type + "Tip"]
+      let snippet = ""
+
+      tip = lx.localize.string(tip, this.data[type + "Sub"])
+
+      if (!oneLine) {
+        let text = this.data.text
+        snippet = this._getSnippet(text)
+      }
+
+      return tip + snippet
     }
 
 
@@ -51,15 +72,87 @@
     // called.
 
 
-    addStep(data) {
+    fix(data) {
+      data.fixPoint = this.data.fixPoint
+      this.data = data
+    }
 
-      return "addStep"
+
+    addStep(data) {
+      switch(data.type) {
+        case "backspace":
+          return this._addBackspaceStep(data)
+        case "delete":
+          return this._addDeleteStep(data)
+        case "type":
+          return this._addTypeStep(data)
+      }
+
+      return "Unknown type in UndoAction addStep"
     }
 
 
     complete() {
+      if (this.data.type === "fix") {
+        return false
+      }
 
       return this
+    }
+
+
+    _addBackspaceStep(data) {
+
+    }
+
+
+    _addDeleteStep(data) {
+      
+    }
+    
+    _addTypeStep(data) {
+      let text = this.redoData[0] + data.redoData[0]
+      let length = text.length
+
+      this.redoData[0] = text
+      this.redoTip = lx.localize.string(
+        "redoTypeTip"
+      , { "%0": length }
+      )
+     
+      this.undoData[1] = data.undoData[1]
+      this.undoTip = lx.localize.string(
+        "undoTypeTip"
+      , { "%0": length
+        , "%1": this.undoData[0] +"-"+ this.undoData[1]
+        }
+      )
+    }
+    
+
+    /**
+     * Called by getTip()
+     *
+     * @param   {string}  text   A string which may be any length
+     * 
+     * @return  {string}         Returns a string with a maximum
+     *                           length of this.snippetLength * 2 + 5
+     *                           If text is longer than this, the 
+     *                           middle chunk will be replaced with
+     *                           " ... "
+     */
+    _getSnippet(text) {
+      if (/^\s*$/.test(text)) {
+        return "\n<whitespace>"
+      }
+
+      if (text.length > this.snippetLength * 2 + 5) {
+        text = text.substring(0, this.snippetLength)
+             + " ... "
+             + text.substring(text.length - this.snippetLength)
+      }
+
+      return "\n\"" + text + "\""
     }
   }
 
@@ -94,7 +187,13 @@
       if (this.progressiveTypes.indexOf(type) < 0) {
         result = this._createAction(data)
 
-      } else if (type !== this.currentType ) {
+      } else if (type === "fix") {
+        result = this._startAction(data)
+
+      } else if (this.currentType === "fix") {
+        result = this._fixAction(data)
+
+      } else if (type !== this.currentType) {
         result = this._startAction(data)
 
       } else {
@@ -141,8 +240,12 @@
 
     _completeCurrentAction() {
       if (this.currentAction) {
-        this.currentAction.complete()
-        this.undoStack.push(this.currentAction)
+        let validAction = this.currentAction.complete()
+
+        if (validAction) { // false if currentAction is unused fix
+          this.undoStack.push(validAction)
+        }
+
         this.currentAction = null
       }
     }
@@ -152,11 +255,17 @@
 
     _startAction(data) {
       this._completeCurrentAction()
+
       this.currentAction = new UndoAction(data)
 
       this.redoStack.length = 0
 
       return "startAction"
+    }
+
+
+    _fixAction(data) {
+      this.currentAction.fix(data)
     }
 
 

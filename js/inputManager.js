@@ -1,6 +1,5 @@
 /** inputManger.js **
-*
-* TODO:
+ * TODO:
  * Merge start and end span
  * Erase selection
  * Deal with cut
@@ -25,7 +24,6 @@
  * - Thai
  *   - Word delimitation
  *   
- * Use localizedString for tooltips
  */
 
 
@@ -246,12 +244,12 @@
         , text: text
         , redoFunction: this.paste.bind(this)
         , redoData: [text, insertPoint]
-        , redoTip: "redoPasteTip" // "Paste %0 [%0, char]"
-        , redoSub: { "%0": length }
+        , redoTip: "redoPasteTip" // "Paste _num [_num, char]"
+        , redoSub: { "_num": length }
         , undoFunction: this.cut.bind(this)
         , undoData: [insertPoint, endPoint]
-        , undoTip: "undoPasteTip" // "Cut chars %0"
-        , undoSub: { "%0": length, "%1": undoSub }
+        , undoTip: "undoPasteTip" // "Cut [_num, char] _pos"
+        , undoSub: { "_num": length, "_pos": undoSub }
         }
 
         this.undoRedo.track(undoData)
@@ -308,10 +306,13 @@
         , text: text
         , redoFunction: this.cut.bind(this)
         , redoData: [start, end]
-        , redoTip: "Cut chars " + start + "-" + end
+        , redoTip: "redoCutTip" // Cut [_num, char] _pos
+        , redoSub: { "_num": end - start
+                   , "_pos": start + " - " + end}
         , undoFunction: this.paste.bind(this)
         , undoData: [text, start]
-        , undoTip: "Restore text"
+        , undoTip: "undoCutTip" // Restore _num [_num, char]
+        , undoSub: { "_num": start - end}
         }
 
         this.undoRedo.track(undoData)
@@ -324,23 +325,36 @@
         })
       }
 
-      let startNode = this.inputContext.before.node
       let cutAdjust = start - end
+      let before = this.inputContext.before
+      let after = this.inputContext.after
+
+      // Move start and end into the neighbouring span if they are
+      // at a node boundary
+      if (before.char === this.chunkArray[before.node].length) {
+        before.node += 1
+        before.text = this.chunkArray[before.node]
+        before.char = 0
+      }
+      if (!after.char) {
+        after.node -= 1
+        after.text = this.chunkArray[after.node]
+        after.char = after.text.length
+      }
 
       console.log("Before", this.wordBorderArray)
 
       this._removeAnyIntermediateNodes()
 
-      if ( startNode === this.inputContext.after.node ) {
+      if ( before.node === after.node ) {
         this._pruneNode()
-      } else if ( this.inputContext.before.type
-        === this.inputContext.after.type ) {
+      } else if ( before.type === after.type ) {
         this._mergeBeforeAndAfterCut()
       } else {
         this._adjoinBeforeAndAfterCut()
       }
 
-      this._shiftSubsequentSpans(startNode + 1, cutAdjust)
+      this._shiftSubsequentSpans(before.node + 1, cutAdjust)
 
       console.log("After ", this.wordBorderArray)
     }
@@ -371,7 +385,7 @@
         console.log("FIX: fixPoint =", undoData.fixPoint)
       }
 
-      this._refreshDisplay(isKeyInput)
+      this._refreshDisplay(false) // not key input
     }
 
 
@@ -432,12 +446,82 @@
 
 
     _backspace() {
+      let before = this.inputContext.before
+      let after = this.inputContext.after
 
+      if (before.type === "^") {
+        return
+      }
+
+      this._removeChar(before, before.char - 1)
+      
+      if (before.char === 1 && before.type !== after.type) {      
+        this._removeEmptyNode(before.node)
+        this._mergeNodes(previous.node, after.node)
+      }
     }
 
 
     _delete() {
+      let after = this.inputContext.after
 
+      if (after.type === "$") {
+        return
+      }
+
+      let start = after.index
+      let char = this._removeChar(after, after.char)
+      // after is left unchanged
+
+      if (after.text.length === 1) {
+        // The after span is empty now that its only char is gone
+        let nodeIndex = after.node
+        this._removeEmptyNode(nodeIndex)
+        // nodeIndex now refers to the following node
+        this._mergeNodes(this.inputContext.before.node, nodeIndex)
+      }
+
+      let undoData = {
+        type: "delete"
+      , text: char
+      , redoFunction: this.cut.bind(this)
+      , redoData: [start, start + 1]
+      , redoTip: "redoDeleteTip" // Delete [_num, char] _pos
+      , redoSub: { "_num": 1
+                 , "_pos": start}
+      , undoFunction: this.paste.bind(this)
+      , undoData: [char, start]
+      , undoTip: "undoDeleteTip" // Restore _num [_num, char]
+      , undoSub: { "_num": 1}
+      }
+
+      this.undoRedo.track(undoData)
+    }
+
+
+    _removeChar(context, charIndex) {
+      let alteredNodeIndex = context.node
+      let node = this.overlayNodes[alteredNodeIndex]
+      let chunk = this.chunkArray[alteredNodeIndex]
+      let char = chunk[charIndex]
+
+      chunk = chunk.splice(charIndex, 1)
+      node.innerText = chunk
+      this.chunkArray[alteredNodeIndex] = chunk
+
+      this._shiftSubsequentSpans(alteredNodeIndex + 1, -1)
+
+      return char
+    }
+
+
+    _removeEmptyNode(nodeIndex) {
+      let element = this.overlayNodes.splice(nodeIndex, 1)[0]
+      this.overlay.removeChild(element)
+
+      this.chunkArray.splice(nodeIndex, 1)
+      this.chunkTypeArray.splice(nodeIndex, 1)
+      this.wordBorderArray.splice(nodeIndex, 1)
     }
 
 
@@ -477,17 +561,21 @@
       let insertPoint = after.index
       let undoData = {
         type: "type"
+      , text: key
       , redoFunction: this.paste.bind(this)
       , redoData: [key, insertPoint]
-      , redoTip: "Type 1 char"
+      , redoTip: "redoTypeTip"
+      , redoSub: { "_num": 1 }
       , undoFunction: this.cut.bind(this)
       , undoData: [insertPoint, insertPoint + 1]
-      , undoTip: "Delete char at " + insertPoint
+      , undoTip: "undoTypeTip"
+      , undoSub: { "_num": 1
+                 , "_pos": insertPoint}
       }
 
       this.undoRedo.track(undoData) 
 
-      console.log("FIX: fixPoint =", undoData.fixPoint)
+      console.log("TYPE: key =", key)
     }
 
 
@@ -621,9 +709,11 @@
 
 
     _setInputContext(start, end) {
-      if (isNaN(start)) {
-        start  = this.input.selectionStart
-        end    = this.input.selectionEnd
+      let useSelection = isNaN(start)
+
+      if (useSelection) {
+        start = this.input.selectionStart
+        end   = this.input.selectionEnd
       }
 
       let before = this._getInsertionContext(start)
@@ -635,6 +725,124 @@
       , after:  after
       , selectCount: end - start
       , selection: text
+      }
+    }
+
+
+    /**
+     * Called twice by updateInputContext(), after a mouseup or keyup
+     * event, once for the beginning of the current selection, once
+     * for the end.
+     * 
+     * Gets the insertion context, either for the text preceding
+     * charIndex (if isAfter is falsy), or for the text following.
+     *
+     * If there is a selection, the contents of the selection will
+     * need to be deleted before the new character is inserted.
+     *
+     * When a character is inserted, it might be:
+     * - within a word, a non-word sequence, or a series of linebreaks
+     * - at a boundary between two types, one of which may be similar
+     *
+     * In the first case, if the input is the same, it will be used to
+     * join the preceding and following
+     *
+     * The `type`s for before and after will be compared with the
+     * type of the current input. If all are the same, then the input
+     * will become part of a single tag. If the input type is the same
+     * as one of the surrounding types, it will be added to that
+     * tag. If it is different from both, then a new tag will be
+     * created.
+     *
+     * @param  {number}   charIndex  The position of the character
+     *                                  in the textarea.textContent
+     * @param  {boolean}  isAfter    True if the details of the
+     *                                  following context should be
+     *                                  returned. If not, the details
+     *                                  of the preceding context will
+     *                                  be returned
+     * @return { index: charIndex
+     *         , node: index of node
+     *         , char: index of char within node
+     *         , type: "w" | "W" (word | non-Word)
+     *         , text: <string>
+     *         }
+     */
+    _getInsertionContext (charIndex, isAfter) {
+      if (charIndex < 0) {
+        charIndex = 0
+        isAfter = false
+      }
+
+      let context = { index: charIndex }
+      let atTypeBoundary = false
+      let nodeIndex
+        , charInNode
+        , char
+        , text
+
+      if (!charIndex) {
+        if (!isAfter) {
+          // Special case: we're right at the beginning with
+          // nothing selected.
+          context.type = "^"
+          context.node = 0 // -1 MAY BE A BREAKING CHANGE
+          context.char = 0
+          return context
+        }
+      }
+
+      // Find out which chunk the selection point is in
+      nodeIndex = this._getNodeAndCharIndex(charIndex) // object
+      charInNode = nodeIndex.charInNode
+      nodeIndex  = nodeIndex.nodeIndex // integer
+
+      if (!isAfter) {
+        if (!charInNode) {
+          // Special case: the beginning of the selection is at
+          // a type boundary. Because we tested for another
+          // special case earlier, we can be sure that nodeIndex
+          // is 0 or greater.
+          atTypeBoundary = true
+          nodeIndex -= 1
+        }
+      }
+
+      context.node = nodeIndex
+      text = this.chunkArray[nodeIndex]
+      context.char = atTypeBoundary ? text.length : charInNode
+      context.text = text
+      context.type = this.chunkTypeArray[nodeIndex]
+
+      return context
+    }
+
+
+    /**
+     * Called by _getInsertionContext() and _electivelySplitAt())
+     *
+     * @param  {number}  charIndex  The character index
+     * 
+     * @return {object}  { nodeIndex: <integer>
+     *                   , charInNode: <integer>
+     *                   }
+     */
+    _getNodeAndCharIndex(charIndex) {
+      let nodeIndex = this.wordBorderArray.length - 1
+      let nodeStartChar = this.wordBorderArray[nodeIndex]
+      let charInNode = false
+
+      while (nodeStartChar > charIndex) {
+        nodeIndex -= 1
+        nodeStartChar = this.wordBorderArray[nodeIndex]
+        charInNode = true
+      }
+
+     charInNode = charInNode ? charIndex - nodeStartChar : 0
+
+      return {
+        nodeIndex: nodeIndex
+      , charInNode: charInNode
       }
     }
 
@@ -670,10 +878,21 @@
       let adjust = start - end
       let chunk = this.chunkArray[nodeIndex]
 
+      // Update model
       chunk = chunk.substring(0, start) + chunk.substring(end)
       this.chunkArray[nodeIndex] = chunk
+
+      // Update view
       this.overlayNodes[nodeIndex].innerText = chunk
 
+      // Update input field
+      start = this.inputContext.before.index
+      end = this.inputContext.after.index
+      chunk = this.input.value
+      chunk = chunk.substring(0, start) + chunk.substring(end)
+      this.input.value = chunk
+
+      // Adjust inputContext now that the selection is removed
       this.inputContext.after = JSON.parse(
                                   JSON.stringify(
                                     this.inputContext.before
@@ -763,114 +982,6 @@
       }
 
       return insertArrayMap
-    }
-
-
-    /**
-     * Called twice by updateInputContext(), after a mouseup or keyup
-     * event, once for the beginning of the current selection, once
-     * for the end.
-     * 
-     * Gets the insertion context, either for the text preceding
-     * charIndex (if isAfter is falsy), or for the text following.
-     *
-     * If there is a selection, the contents of the selection will
-     * need to be deleted before the new character is inserted.
-     *
-     * When a character is inserted, it might be:
-     * - within a word, a non-word sequence, or a series of linebreaks
-     * - at a boundary between two types, one of which may be similar
-     *
-     * In the first case, if the input is the same, it will be used to
-     * join the preceding and following
-     *
-     * The `type`s for before and after will be compared with the
-     * type of the current input. If all are the same, then the input
-     * will become part of a single tag. If the input type is the same
-     * as one of the surrounding types, it will be added to that
-     * tag. If it is different from both, then a new tag will be
-     * created.
-     *
-     * @param  {number}   charIndex  The position of the character
-     *                                  in the textarea.textContent
-     * @param  {boolean}  isAfter    True if the details of the
-     *                                  following context should be
-     *                                  returned. If not, the details
-     *                                  of the preceding context will
-     *                                  be returned
-     * @return { index: charIndex
-     *         , node: index of node
-     *         , char: index of char within node
-     *         , type: "w" | "W" (word | non-Word)
-     *         , text: <string>
-     *         }
-     */
-    _getInsertionContext (charIndex, isAfter) {
-      let context = { index: charIndex }
-      let atTypeBoundary = false
-      let nodeIndex
-        , charInNode
-        , char
-        , text
-
-      if (!charIndex) {
-        if (!isAfter) {
-          // Special case: we're right at the beginning with
-          // nothing selected.
-          context.type = "^"
-          context.node = -1
-          return context
-        }
-      }
-
-      // Find out which chunk the selection point is in
-      nodeIndex = this._getNodeAndCharIndex(charIndex) // object
-      charInNode = nodeIndex.charInNode
-      nodeIndex  = nodeIndex.nodeIndex // integer
-
-      if (!isAfter) {
-        if (!charInNode) {
-          // Special case: the beginning of the selection is at
-          // a type boundary. Because we tested for another
-          // special case earlier, we can be sure that nodeIndex
-          // is 0 or greater.
-          atTypeBoundary = true
-          nodeIndex -= 1
-        }
-      }
-
-      context.node = nodeIndex
-      text = this.chunkArray[nodeIndex]
-      context.char = atTypeBoundary ? text.length : charInNode
-      context.text = text
-      context.type = this.chunkTypeArray[nodeIndex]
-
-      return context
-    }
-
-
-    /**
-     * Called by _getInsertionContext() and _electivelySplitAt())
-     *
-     * @param  {number}  charIndex  The character index
-     * 
-     * @return {object}  { nodeIndex: <integer>
-     *                   , charInNode: <integer>
-     *                   }
-     */
-    _getNodeAndCharIndex(charIndex) {
-      let nodeIndex = this.wordBorderArray.length - 1
-      let nodeStartChar = this.wordBorderArray[nodeIndex]
-
-      while (nodeStartChar > charIndex) {
-        nodeIndex -= 1
-        nodeStartChar = this.wordBorderArray[nodeIndex]
-      }
-
-      return {
-        nodeIndex: nodeIndex
-      , charInNode: charIndex - nodeStartChar
-      }
     }
 
 
@@ -1027,14 +1138,20 @@
 
 
     _mergeNodes(first, second) {
-      let chunk = this.chunkArray[first] + this.chunkArray[second]
-      let deleteNode = this.overlayNodes[second]
+      // Don't merge with bookend nodes
+      if (this.chunkTypeArray[first] === "^") {
+        return
+      } else if (this.chunkTypeArray[second] === "$") {
+        return
+      }
 
+      // Move all text to the first node
+      let chunk = this.chunkArray[first] + this.chunkArray[second]
       this.overlayNodes[first].innerText = chunk
       this.chunkArray[first] = chunk
 
-      this.overlay.removeChild(deleteNode)
-
+      // Remove all trace of the second node
+      this.overlay.removeChild(this.overlayNodes[second])
       this.chunkArray.splice(second, 1)
       this.chunkTypeArray.splice(second, 1)
       this.wordBorderArray.splice(second, 1)

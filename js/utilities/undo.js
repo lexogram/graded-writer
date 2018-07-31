@@ -93,6 +93,7 @@
 
 
     complete() {
+      // NOT ACTUALLY NEEDED ???
       if (this.data.type === "fix") {
         return false
       }
@@ -102,31 +103,54 @@
 
 
     _addBackspaceStep(data) {
+      let text = this.data.text
+               = this.data.undoData[0]
+               = data.text + this.data.text
+      let length = text.length
+      let start = data.undoData[0]
+
+      this.data.redoSub = { "_num": length
+                          , "_pos": start
+                          }
+     
+      this.data.undoData[1] = start
+      this.data.undoSub = {
+        "_num": length
+      , "_pos": start +"-"+ this.data.undoData[1]
+      }    
 
     }
 
 
     _addDeleteStep(data) {
-      
-    }
-    
-    _addTypeStep(data) {
-      let text = this.redoData[0] + data.redoData[0]
+      let end   = this.data.redoData[1]
+                = this.data.redoData[1] + 1
+      let text  = this.data.text
+                = this.data.undoData[0]
+                = this.data.text + data.text
       let length = text.length
 
-      this.redoData[0] = text
-      this.redoTip = lx.localize.string(
-        "redoTypeTip"
-      , { "%0": length }
-      )
+      this.data.redoSub = { "_num": length
+                          , "_pos": this.data.redoData[0] + "-" + end
+                          }
      
-      this.undoData[1] = data.undoData[1]
-      this.undoTip = lx.localize.string(
-        "undoTypeTip"
-      , { "%0": length
-        , "%1": this.undoData[0] +"-"+ this.undoData[1]
-        }
-      )
+      this.data.undoSub = { "_num": length }    
+    }
+    
+
+    _addTypeStep(data) {
+      let text = this.data.text
+               = this.data.redoData[0]
+               = this.data.text + data.text
+      let length = text.length
+
+      this.data.redoSub = { "_num": length }
+     
+      this.data.undoData[1] = data.undoData[1]
+      this.data.undoSub = {
+        "_num": length
+      , "_pos": this.data.undoData[0] +"-"+ this.data.undoData[1]
+      }
     }
     
 
@@ -171,7 +195,7 @@
       this.undoStack = []
       this.redoStack = []
 
-      this.progressiveTypes = ["type", "delete", "backspace"]
+      this.progressiveTypes = ["fix", "type", "delete", "backspace"]
       // one-off types: "paste", "cut"
       this.currentType = undefined
       this.currentAction = null
@@ -210,14 +234,14 @@
       let action
 
       if (this.currentAction) {
-        action = this.currentAction.complete()
-      } else {
-        action = this.undoStack.pop()
-      }
+        this.currentAction.complete()
+      } 
+
+      action = this.undoStack.shift()
 
       if (action) {
         action.undo()
-        this.redoStack.push(action)
+        this.redoStack.unshift(action)
       }
 
       return this.undoStack.length // if 0, disable undo button 
@@ -225,11 +249,11 @@
 
 
     redo() {
-      let action = this.redoStack.pop()
+      let action = this.redoStack.shift()
 
       if (action) {
         action.redo()
-        this.undoStack.push(action)
+        this.undoStack.unshift(action)
       }
 
       return this.redoStack.length // if 0, disable redo button 
@@ -240,12 +264,7 @@
 
     _completeCurrentAction() {
       if (this.currentAction) {
-        let validAction = this.currentAction.complete()
-
-        if (validAction) { // false if currentAction is unused fix
-          this.undoStack.push(validAction)
-        }
-
+        this.currentAction.complete()
         this.currentAction = null
       }
     }
@@ -258,7 +277,9 @@
 
       this.currentAction = new UndoAction(data)
 
-      this.redoStack.length = 0
+      if (data.type !== "fix") {
+        this.redoStack.length = 0
+      }
 
       return "startAction"
     }
@@ -266,6 +287,8 @@
 
     _fixAction(data) {
       this.currentAction.fix(data)
+      this.undoStack.unshift(this.currentAction)
+      this.redoStack.length = 0
     }
 
 
@@ -282,7 +305,7 @@
       this._completeCurrentAction()
 
       let action = new UndoAction(data)
-      this.undoStack.push(action)
+      this.undoStack.unshift(action)
 
       this.redoStack.length = 0
 

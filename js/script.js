@@ -21,7 +21,11 @@
        * @param {string} newSubStr The String that is spliced in.
        * @return {string} A new string with the spliced substring.
        */
-      String.prototype.splice = function(start, delCount, newSubStr) {
+      String.prototype.splice = function(
+        start = 0
+      , delCount = 0
+      , newSubStr = ""
+      ) {
         return this.slice(0, start)
              + newSubStr
              + this.slice(start + Math.abs(delCount))

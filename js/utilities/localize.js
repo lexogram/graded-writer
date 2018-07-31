@@ -222,20 +222,44 @@
 
         , "символ": "символ;символа;символов"
 
-        , "undoTypeTip": "Удалить [%0, символ] %1"
-        , "redoTypeTip": "Печатать %0 [%0, символ]"
-        , "undoPasteTip": "Вырезать [%0, символ] %1"
-        , "redoPasteTip": "Вставить %0 [%0, символ]"
+        , "undoTypeTip": "Удалить [_num, символ] (_pos)"
+        , "redoTypeTip": "Печатать _num [_num, символ]"
+        , "undoPasteTip": "Вырезать [_num, символ] _pos"
+        , "redoPasteTip": "Вставить _num [_num, символ]"
+        , "undoCutTip": "Возрождать _num [_num, символ]"
+        , "redoCutTip": "Вырезать [_num, символ] _pos"
+        // , "undoDeleteTip": "Restore _num [_num, char]"
+        // , "redoDeleteTip": "Cut [_num, char] _pos"
         }
+
       , en: {
           plural_rule: "#1"
 
         , "char": "character;characters"
 
-        , "undoTypeTip": "Delete [%0, char] %1"
-        , "redoTypeTip": "Type %0 [%0, char]"
-        , "undoPasteTip": "Cut [%0, char] %1"
-        , "redoPasteTip": "Paste %0 [%0, char]"
+        , "undoTypeTip": "Delete _num [_num, char] (_pos)"
+        , "redoTypeTip": "Type _num [_num, char]"
+        , "undoPasteTip": "Cut [_num, char] _pos"
+        , "redoPasteTip": "Paste _num [_num, char]"
+        , "undoCutTip": "Restore _num [_num, char]"
+        , "redoCutTip": "Cut [_num, char] _pos"
+        , "undoDeleteTip": "Restore _num [_num, char]"
+        , "redoDeleteTip": "Cut [_num, char] _pos"
+        }
+
+      , fr: {
+          plural_rule: "#1"
+
+        , "char": "caractère;caractères"
+
+        , "undoTypeTip": "Effacer _num [_num, char] (_pos)"
+        , "redoTypeTip": "Taper _num [_num, char]"
+        , "undoPasteTip": "Couper [_num, char] _pos"
+        , "redoPasteTip": "Coller _num [_num, char]"
+        , "undoCutTip": "Rétablir _num [_num, char]"
+        , "redoCutTip": "Couper [_num, char] _pos"
+        , "undoDeleteTip": "Rétablir _num [_num, char]"
+        , "redoDeleteTip": "Effacer [_num, char] _pos"
         }
       }
     }

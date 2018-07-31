@@ -1,0 +1,335 @@
+Processing a mouse event means not bothering with any editing
+
+Editing means:
+
+* Check for text to cut
+* Apply span truncations
+* Check for merges
+* Check for splits
+* Update at least one span
+* Update wordBorderArray
+* Determine whether activeNode has changed
+
+
+In both cases:
+
+* Check for recolouring
+* Check for decolour and scroll
+* Update this.activeNode
+
+
+
+Five cases:
+
+2. Move from non-word to word
+   - uncolour word
+   - scroll to word
+3. Move from word to non-word
+   - recolour word
+4. Move from word A to word B
+   - recolour word A
+   - uncolour word B
+   - scroll to word B
+5. Move from word A to word A
+   - no action
+
+
+Word change
+Node change
+
+_insertNewTag
+
+      afterNode = this.overlayNodes[nodeIndex]
+      this.overlay.insertBefore(tag, afterNode)
+
+      this.overlayNodes.splice(nodeIndex, 0, tag)
+      this.chunkArray.splice(nodeIndex, 0, text)
+      this.chunkTypeArray.splice(nodeIndex, 0, type)
+      this.wordBorderArray.splice(nodeIndex, 0, charIndex)
+
+_insertBreak
+
+      this.overlay.insertBefore(element, node)
+      this.overlayNodes.splice(alteredNodeIndex, 0, element)
+
+      this.wordBorderArray.splice(alteredNodeIndex, 0, border)
+      this.chunkTypeArray.splice(alteredNodeIndex, 0, "r")
+      this.chunkArray.splice(alteredNodeIndex, 0, breakChar)
+
+_makeSplitAt
+
+      // Add a new entry for the remainder
+      nodeIndex += 1
+      this.chunkArray.splice(nodeIndex, 0, chunk2)
+      this.chunkTypeArray.splice(nodeIndex, 0, type)
+      this.wordBorderArray.splice(nodeIndex, 0, insertPoint)
+
+      // Add a new one
+      nextSibling = node.nextSibling
+      node = document.createElement("span") // no style yet
+      node.innerText = chunk2
+      this.overlayNodes.splice(nodeIndex, 0, node)
+      this.overlay.insertBefore(node, nextSibling)
+
+
+
+
+
+
+    /**
+     * Called by paste()
+     *
+     * @param  {string}  text   The text that is to be pasted
+     *
+     * Returns an array with the format:
+     * [ { index: <integer>
+     *   , chunk: <paragraph | return character(s)>
+     *   , type: <"p"        | "r">
+     *   }
+     * , ...
+     * ]
+     */
+    _getParagraphArray(text, insertPoint) {
+      let array = []
+      let start = 0
+      let end = text.length
+      let lineBreakData
+        , index
+        , chunk
+
+      let addText = (start, index) => {
+        array.push({
+          index: start + insertPoint
+        , chunk: text.substring(start, index)
+        , type: "p"
+        })
+      }
+
+      let addBreaks = (start, chunk) => {
+        // COULD BE MOVED INLINE
+        array.push({
+          index: index + ii + insertPoint
+        , chunk: chunk
+        , type: "r"
+        })
+
+        // let total = chunk.length
+
+        // for ( let ii = 0; ii < total; ii += 1 ) {  
+        //   array.push({
+        //     index: index + ii + insertPoint
+        //   , chunk: "\n"
+        //   , type: "r"
+        //   }) 
+        // }
+      }
+
+      while (lineBreakData = this.lineBreakRegex.exec(text)) {
+        // [ "↵"
+        // , index: <positive integer>
+        // , input: <string>
+        // ]
+        index = lineBreakData.index
+        chunk = lineBreakData[0]
+
+        if (index) {
+          addText(start, index)
+        }
+
+        addBreaks(index, chunk)
+
+        start = index + chunk.length
+      }
+
+      if (start < end) {
+        addText(start, end)
+      }
+
+      return array
+    }
+
+
+    /**
+     * Called by paste()
+     * Returns an object with the format
+     * { wordBorderArray: [<integer>, ...]
+     * , chunkArray: [<string: word | linebreak | non-word>, ... ]
+     * , chunkTypeArray: [<"w" | "r" | "W">, ...]
+     * }
+     *
+     * @param  {array}  paragraphArray  An array of objects with the
+     * format:
+     * [ { "index": <integer>
+     *   , "chunk": <string: paragraph | linebreak(s)>
+     *   , "type":  <"p"               | "r">
+     *   }
+     *  , ...
+     *  }
+     */
+    _getInsertArrayMap(paragraphArray) {
+      let wordBorderArray = []
+      let chunkArray      = []
+      let chunkTypeArray  = []
+
+      let insertArrayMap = {
+        wordBorderArray: wordBorderArray
+      , chunkArray: chunkArray
+      , chunkTypeArray: chunkTypeArray
+      }
+
+
+      let addLinebreakToInsertArrayMap = (chunkData) => {
+        wordBorderArray.push(chunkData.index)
+        chunkArray.push(chunkData.chunk)
+        console.log(chunkData.chunk.charCodeAt(0))
+        chunkTypeArray.push("r")
+      }
+
+
+      let addParagraphToInsertArrayMap = (chunkData) => {
+        let chunk = chunkData.chunk
+        let insertPoint = chunkData.index
+        let length = chunk.length
+        let start = 0
+        let index
+          , result
+
+        let addUnmatchedChunk = (start, index) => {
+          wordBorderArray.push(start + insertPoint)
+          chunkArray.push(chunk.substring(start, index))
+          chunkTypeArray.push(this.findWords ? "W" : "w")
+        }
+
+        let addChunk = (chunk, index) => {
+          wordBorderArray.push(index + insertPoint)
+          chunkArray.push(chunk)
+          chunkTypeArray.push(this.findWords ? "w" : "W")
+
+          start = index + chunk.length
+        }
+
+        while (result = this.regex.exec(chunk)) {
+          // [ <first match>
+          // , index: <non-negative integer>
+          // , input: <string>
+          // ]
+
+          index = result.index
+
+          if (index) {
+            addUnmatchedChunk(start, index)
+          }
+
+          addChunk(result[0], index)
+        }
+
+        if (start < length) {
+          addUnmatchedChunk(start, length)
+        }
+      }
+
+
+      let addToInsertArrayMap = (chunkData) => {
+        switch (chunkData.type) {
+          case "r":
+            return addLinebreakToInsertArrayMap(chunkData)
+          default:
+            addParagraphToInsertArrayMap(chunkData)
+        }
+      }
+
+
+      paragraphArray.forEach(addToInsertArrayMap)
+
+      return insertArrayMap
+    }
+
+
+              { index: charIndex
+     *         , node: index of node
+     *         , char: index of char within node
+     *         , type: "w" | "W" | "r" (word | non-word | linebreak)
+     *         }
+
+
+_makeSplitAt() sent by _electivelySplitAt() during a paste() operation.
+
+If the user is pasting into a selection, then the spans will already be split at the appropriate place. _makeSplitAt() will only be used if pasting into the middle of an existing span.
+
+
+
+——————————————————————————————————
+The mechanics of a cut() operation
+——————————————————————————————————
+
+InputContext is set.
+* Check if before and after are inside the same span (or include the
+  beginning of that span). If so, update that span
+* Check if before is inside a span. If so trim that span.
+  - Update chunkArray
+  - Update overlayNodesArray[before.node].text
+* Remove all intervening spans at before.node + 1
+  Remove items from wordBorderArray, chunkArray, chunkTypeArray, overlayNodes and overlay.children
+* Check if after is inside a span. If so:
+  • Check if it is the same type as before. If so, merge them
+    - Add trimmed text to before span
+    - Delete 
+      . span
+      . overlayNode
+      . chunkArray
+      . chunkTypeArray
+      . wordBorderArray
+  • If not, trim it:
+    - Update chunkArray
+    - Update overlayNodesArray[before.node].text
+    - Update wordBorderArray to reflect the new starting point
+
+* before and after now straddle the cut. Remove the cut number of chars from after and all subsequent wordBorderArray entries
+
+
+* Check if there are any intermediate spans to cut, and cut them
+* There are now three possible situations:
+  - The cut was inside one span (so no intermediates were cut)
+    Trim the centre of the span
+    The insertion point will be inside the span
+  - The cut started and ended in a span of the same type
+    Merge the two spans
+    The insertion point will be inside the span
+  - The start and end spans are of different types
+    Trim the end of the start and the start of the end span
+    The insertion point will between the two spans
+
+  Then
+    Update inputContext
+    Update wordBoundaryArray
+
+
+If the cut is to be followed immediately by an insert of a different type, then a second operation will be needed to (re-)split the span in the first two cases.
+
+Typing characters is like a slow paste. There is the insertion point, where characters may be deleted and then the accumulating text. When the insertion point/ selection changes, a new UndoAction should be started. If the insertion point is changed without any cut, paste or type input (for example: by repeatedly pressing an arrow key), then the unborn UndoAction should be killed or repurposed.
+
+Arrow keys and mouseUps change the insertion point. We need to create a new UndoAction at this time.
+
+The UndoAction needs to be changed if the action at the current insertion point changes. 
+
+At the very beginning, we can create an UndoAction for the user's typing into an empty document.
+
+
+The user makes a selection with the mouse. And then:
+* Makes another selection. The first selection should be lost
+* Uses cut (possibly through paste, backspace, delete or type new character)
+  - The cut action will set start and end index points, and the text to remove. No fix is necessary.
+
+The user places the insertion point at between two characters. And then:
+* Moves the insertion point. The first insertion should be lost
+* Uses:
+  - paste
+  - backspace
+  - delete
+  - type
+
+The paste action will override the fix. The other actions will define it and extend it. 
+
+
+
+How to replace 

@@ -10,7 +10,8 @@
  *  - cut
  *
  * Do type, backspace and delete
- * 
+ *
+
  * Detect out-of-range words used in text
  * Add out-of-range words as they are inserted
  * (Alphabetical order. Collapse capitalized if lowercase exists,
@@ -23,9 +24,9 @@
  *   - Create LUT to look for frequency index whether accented or not
  * - Thai
  *   - Word delimitation
- *   
- */
+ *
 
+ */
 
 ;(function inputMangerLoaded(lx){
   "use strict"
@@ -34,9 +35,7 @@
     lx = window.lexogram = {}
   }
 
-
   window.feedback = document.querySelector("#feedback p")
-
 
   /* POLYFILLS and HACKS */
     // http://stackoverflow.com/a/4314050/1927589
@@ -66,7 +65,6 @@
     }
   /* END POLYFILLS */
 
-
   class InputManager {
     constructor(corpus, undoRedo, panels) {
       this.corpus = corpus
@@ -84,7 +82,7 @@
 
       // Detect line breaks on any platform
       this.lineBreakRegex = /[\r|\r\n|\n]+/g
-                                            
+
       // this.wordBorderArray  = [0]
       // this.chunkArray       = [""]
       // this.chunkTypeArray   = ["$"]
@@ -162,14 +160,17 @@
                           , text)
       }
 
+      let startSpan = document.createElement("span")
+      startSpan.classList.add("start")
       let endSpan = document.createElement("span")
       endSpan.classList.add("end")
-      this._replaceContentsOf(this.overlay, endSpan)
 
-      this.wordBorderArray = [0]
-      this.chunkArray      = [""]
-      this.chunkTypeArray  = ["$"]
-      this.overlayNodes    = [endSpan]
+      this._replaceContentsOf(this.overlay, startSpan, endSpan)
+
+      this.wordBorderArray = [0, 0]
+      this.chunkArray      = ["", ""]
+      this.chunkTypeArray  = ["^", "$"]
+      this.overlayNodes    = [startSpan, endSpan]
 
       this.paste(text, 0, isNotUndoable)
     }
@@ -207,6 +208,7 @@
      */
     interceptCut(event) {
       this.cut()
+      event.preventDefault()
     }
 
 
@@ -226,11 +228,10 @@
       let length = text.length
 
       // Update input textarea
-      let value = this.input.value
-      value = value.substring(0, insertPoint)
-            + text
-            + value.substring(insertPoint)
-      this.input.value = value
+      //this.input.value = this.input.value.splice(insertPoint, 0, text)
+      this._updateInput(insertPoint, 0, text)
+
+      //console.log(this.input.value)
 
       if (!ignoreUndo) {
         let endPoint = insertPoint + length
@@ -241,15 +242,15 @@
 
         let undoData = {
           type: "paste"
-        , text: text
-        , redoFunction: this.paste.bind(this)
-        , redoData: [text, insertPoint]
-        , redoTip: "redoPasteTip" // "Paste _num [_num, char]"
-        , redoSub: { "_num": length }
-        , undoFunction: this.cut.bind(this)
-        , undoData: [insertPoint, endPoint]
-        , undoTip: "undoPasteTip" // "Cut [_num, char] _pos"
-        , undoSub: { "_num": length, "_pos": undoSub }
+          , text: text
+          , redoFunction: this.paste.bind(this)
+          , redoData: [text, insertPoint]
+          , redoTip: "redoPasteTip" // "Paste _num [_num, char]"
+          , redoSub: { "_num": length }
+          , undoFunction: this.cut.bind(this)
+          , undoData: [insertPoint, endPoint]
+          , undoTip: "undoPasteTip" // "Cut [_num, char] _pos"
+          , undoSub: { "_num": length, "_pos": undoSub }
         }
 
         this.undoRedo.track(undoData)
@@ -259,13 +260,18 @@
       let insertSpanCount = insertArrayMap.chunkArray.length
 
       let nodeIndex = this._electivelySplitAt(insertPoint)
-      this._shiftSubsequentSpans(nodeIndex, length)
+      // index of node after the split.
+
       // may split a node into two of the same type
+      this._shiftSubsequentSpans(nodeIndex, length)
 
       this._insertSpans(nodeIndex, insertArrayMap)
       this._insertArrays(nodeIndex, insertArrayMap)
 
       this._electivelyMergeTerminalSpans(insertSpanCount)
+
+      //console.log(this.input.value)
+
     }
 
 
@@ -279,11 +285,14 @@
      *                               end of the cut
      * @param  {<type>}  ignoreUndo  true if the call comes from an
      *                               UndoAction instance
-     *                               
-     * All the above will be undefined if the call came from 
+     *
+
+     * All the above will be undefined if the call came from
+
      * _postProcessKeyUp()
      */
     cut(start, end) {
+      let dontCutFromTextArea = start === "dontCutFromTextArea"
       let ignoreUndo = !isNaN(start) // call came from UndoAction
 
       if (ignoreUndo) {
@@ -303,16 +312,16 @@
 
         let undoData = {
           type: "cut"
-        , text: text
-        , redoFunction: this.cut.bind(this)
-        , redoData: [start, end]
-        , redoTip: "redoCutTip" // Cut [_num, char] _pos
-        , redoSub: { "_num": end - start
-                   , "_pos": start + " - " + end}
-        , undoFunction: this.paste.bind(this)
-        , undoData: [text, start]
-        , undoTip: "undoCutTip" // Restore _num [_num, char]
-        , undoSub: { "_num": start - end}
+          , text: text
+          , redoFunction: this.cut.bind(this)
+          , redoData: [start, end]
+          , redoTip: "redoCutTip" // Cut [_num, char] _pos
+          , redoSub: { "_num": end - start
+                     , "_pos": start + " - " + end}
+          , undoFunction: this.paste.bind(this)
+          , undoData: [text, start]
+          , undoTip: "undoCutTip" // Restore _num [_num, char]
+          , undoSub: { "_num": start - end}
         }
 
         this.undoRedo.track(undoData)
@@ -329,25 +338,25 @@
       let before = this.inputContext.before
       let after = this.inputContext.after
 
-      // Move start and end into the neighbouring span if they are
-      // at a node boundary
-      if (before.char === this.chunkArray[before.node].length) {
-        before.node += 1
-        before.text = this.chunkArray[before.node]
-        before.char = 0
-      }
-      if (!after.char) {
-        after.node -= 1
-        after.text = this.chunkArray[after.node]
-        after.char = after.text.length
-      }
+      // // Move start and end into the neighbouring span if they are
+      // // at a node boundary
+      // if (before.char === this.chunkArray[before.node].length) {
+      //   before.node += 1
+      //   before.text = this.chunkArray[before.node]
+      //   before.char = 0
+      // }
+      // if (!after.char) {
+      //   after.node -= 1
+      //   after.text = this.chunkArray[after.node]
+      //   after.char = after.text.length
+      // }
 
-      console.log("Before", this.wordBorderArray)
+      //console.log("Before", this.wordBorderArray)
 
-      this._removeAnyIntermediateNodes()
+      this._removeAnyIntermediateNodes(dontCutFromTextArea)
 
       if ( before.node === after.node ) {
-        this._pruneNode()
+        this._pruneNode(dontCutFromTextArea)
       } else if ( before.type === after.type ) {
         this._mergeBeforeAndAfterCut()
       } else {
@@ -356,7 +365,7 @@
 
       this._shiftSubsequentSpans(before.node + 1, cutAdjust)
 
-      console.log("After ", this.wordBorderArray)
+      //console.log("After ", this.wordBorderArray)
     }
 
 
@@ -382,7 +391,7 @@
 
         this.undoRedo.track(undoData)
 
-        console.log("FIX: fixPoint =", undoData.fixPoint)
+        //console.log("FIX: fixPoint =", undoData.fixPoint)
       }
 
       this._refreshDisplay(false) // not key input
@@ -445,6 +454,13 @@
     }
 
 
+    /**
+     * _backspace removes one character at a time. The start index of
+     * the removal decrements by one each time, and the length of the
+     * deleted text increases by one.
+     *
+     * @return     {<type>}  { description_of_the_return_value }
+     */
     _backspace() {
       let before = this.inputContext.before
       let after = this.inputContext.after
@@ -453,12 +469,34 @@
         return
       }
 
-      this._removeChar(before, before.char - 1)
-      
-      if (before.char === 1 && before.type !== after.type) {      
+      let start = before.index - 1
+      let char = this._removeChar(before, before.char - 1)
+
+      if (before.char === 1 && before.type !== after.type) {
+        // The last character in a node has been removed.
+
         this._removeEmptyNode(before.node)
-        this._mergeNodes(previous.node, after.node)
+        // The index of after is now equal to before.node
+        this._mergeNodes(before.node - 1, before.node)
       }
+
+      let undoData = {
+        type: "backspace"
+        , text: char
+        , redoFunction: this.cut.bind(this)
+        , redoData: [start, start + 1]
+        , redoTip: "redoDeleteTip" // Delete [_num, char] _pos
+        , redoSub: { "_num": 1
+                   , "_pos": start}
+        , undoFunction: this.paste.bind(this)
+        , undoData: [char, start]
+        , undoTip: "undoDeleteTip" // Restore _num [_num, char]
+        , undoSub: { "_num": 1 }
+      }
+
+      // console.log("Backspace", undoData)
+
+      this.undoRedo.track(undoData)
     }
 
 
@@ -528,12 +566,14 @@
     /**
      * Called by _treatInput(), itself called by _postProcessKeyUp()
      * following a treatKeyUp() event
-     * 
+     *
+
      * @param  {"w" | "W"}  type
      *     This indicates whether the character to insert is a word
      *     or a non-Word character.
      * @param  {string}   key
-     *     A single printable character  
+     *     A single printable character
+
      */
     _insert(type, key) {
       let before = this.inputContext.before
@@ -573,9 +613,9 @@
                  , "_pos": insertPoint}
       }
 
-      this.undoRedo.track(undoData) 
+      this.undoRedo.track(undoData)
 
-      console.log("TYPE: key =", key)
+      //console.log("TYPE: key =", key)
     }
 
 
@@ -595,11 +635,13 @@
      *                           }
      * @param  {<type>}  after   Context object for character after
      *                           the split.
-     *                           
+     *
+
      * `after` is a pointer to `this.inputContext.after`. This will be
      *  modified so that it represents the new node that will be
      *  created by the call to _insertNewSpan()
-     *  
+     *
+
      * this.inputContext will be updated to allow subsequent
      * methods to work as if the split had always existed.
      */
@@ -609,7 +651,7 @@
       let type       = before.type
       let text       = before.text
       let splitText  = text.substring(charIndex)
-      
+
       // Truncate current node...
       text           = text.substring(0, charIndex)
       let node       = this.overlayNodes[nodeIndex]
@@ -620,7 +662,8 @@
       before.text    = text
 
       // Prepare this.inputContext.after to describe the node that
-      // is about to be created. 
+      // is about to be created.
+
       after.node     += 1 // SEE * BELOW
       after.char     = 0
       after.text     = splitText
@@ -677,7 +720,7 @@
         this._shiftSubsequentSpans(nodeIndex + 1, text.length)
       }
     }
-  
+
 
     /**
      * updateTag
@@ -733,7 +776,8 @@
      * Called twice by updateInputContext(), after a mouseup or keyup
      * event, once for the beginning of the current selection, once
      * for the end.
-     * 
+     *
+
      * Gets the insertion context, either for the text preceding
      * charIndex (if isAfter is falsy), or for the text following.
      *
@@ -786,7 +830,8 @@
           // Special case: we're right at the beginning with
           // nothing selected.
           context.type = "^"
-          context.node = 0 // -1 MAY BE A BREAKING CHANGE
+          context.text = ""
+          context.node = 0
           context.char = 0
           return context
         }
@@ -822,7 +867,8 @@
      * Called by _getInsertionContext() and _electivelySplitAt())
      *
      * @param  {number}  charIndex  The character index
-     * 
+     *
+
      * @return {object}  { nodeIndex: <integer>
      *                   , charInNode: <integer>
      *                   }
@@ -849,7 +895,7 @@
 
     // CUT // CUT // CUT // CUT // CUT // CUT // CUT // CUT // CUT //
 
-    _removeAnyIntermediateNodes() {
+    _removeAnyIntermediateNodes(dontCutFromTextArea) {
       let start = this.inputContext.before.node + 1
       let count = this.inputContext.after.node - start
 
@@ -868,29 +914,41 @@
       nodesToRemove.forEach((element) => {
         this.overlay.removeChild(element)
       })
+
+      if (!dontCutFromTextArea) {
+        // Update textarea
+        start = this.inputContext.before.index
+        count  = this.inputContext.after.index - start
+        this._updateInput(start, count, "")
+      }
     }
 
-    
-    _pruneNode() {
+
+    _updateInput(start, count, text = "") {
+      let selectEnd = this.input.selectEnd + text.length - count
+      this.input.value = this.input.value.splice(start, count, text)
+      this.input.setSelectionRange(selectEnd, selectEnd)
+    }
+
+
+    _pruneNode(dontCutFromTextArea) {
       let nodeIndex = this.inputContext.before.node
       let start = this.inputContext.before.char
       let end = this.inputContext.after.char
       let adjust = start - end
-      let chunk = this.chunkArray[nodeIndex]
 
       // Update model
-      chunk = chunk.substring(0, start) + chunk.substring(end)
+      let chunk = this.chunkArray[nodeIndex].splice(start, adjust)
       this.chunkArray[nodeIndex] = chunk
 
       // Update view
       this.overlayNodes[nodeIndex].innerText = chunk
 
-      // Update input field
-      start = this.inputContext.before.index
-      end = this.inputContext.after.index
-      chunk = this.input.value
-      chunk = chunk.substring(0, start) + chunk.substring(end)
-      this.input.value = chunk
+      if (!dontCutFromTextArea) {
+        // Update textarea
+        start = this.inputContext.before.index
+        this._updateInput(start, adjust)
+      }
 
       // Adjust inputContext now that the selection is removed
       this.inputContext.after = JSON.parse(
@@ -902,18 +960,51 @@
 
 
     _mergeBeforeAndAfterCut() {
-    
+      let before = this.inputContext.before
+      let after = this.inputContext.after
+
+      // Update before
+      let text = before.text.substring(0, before.char)
+
+               + after.text.substring(after.char)
+
+      let nodeIndex = before.node
+      let node = this.overlayNodes[nodeIndex]
+      node.innerText = text
+      this.chunkArray[nodeIndex] = text
+
+      // Delete after
+      nodeIndex += 1
+      this.chunkArray.splice(nodeIndex, 1)
+      this.chunkTypeArray.splice(nodeIndex, 1)
+      this.wordBorderArray.splice(nodeIndex, 1)
+      node = this.overlayNodes.splice(nodeIndex, 1)[0]
+      this.overlay.removeChild(node)
     }
 
 
     _adjoinBeforeAndAfterCut() {
+      let before = this.inputContext.before
+      let after = this.inputContext.after
 
+      // Trim before
+      let nodeIndex = before.node
+      let text = before.text.substring(0, before.char)
+      this.overlayNodes[nodeIndex].innerText = text
+      this.chunkArray[nodeIndex] = text
+
+      // Trim after
+      nodeIndex += 1
+      text = after.text.substring(after.char)
+      this.overlayNodes[nodeIndex].innerText = text
+      this.chunkArray[nodeIndex] = text
     }
 
 
     /**
      * Sent by load()
-     * 
+     *
+
      * Removes all the children of parent and then adds the single
      * element in their place
      *
@@ -921,18 +1012,20 @@
      * @param      {<type>}  element  The element to add:
      *                                <span class="end"></span>
      */
-    _replaceContentsOf(parent, element) {
+    _replaceContentsOf(parent, ...elements) {
       let child
 
       while (child = parent.lastChild) {
         parent.removeChild(child)
       }
 
-      parent.appendChild(element)
+      elements.forEach((element) => {
+        parent.appendChild(element)
+      })
     }
 
 
-    _getInsertMap(chunk, insertPoint) {      
+    _getInsertMap(chunk, insertPoint) {
       let wordBorderArray = []
       let chunkArray      = []
       let chunkTypeArray  = []
@@ -1054,8 +1147,10 @@
 
     /**
      * Sent by paste()
-     * 
-     * Adds a new span before nodeIndex for each entry in 
+     *
+
+     * Adds a new span before nodeIndex for each entry in
+
      * insertArrayMap.chunkArray
      *
      * @param  {array}  insertArrayMap  An object with the format
@@ -1065,20 +1160,21 @@
      *     }
      */
     _insertSpans(nodeIndex, insertArrayMap) {
-      let chunkArray      = insertArrayMap.chunkArray
-      let chunkTypeArray  = insertArrayMap.chunkTypeArray
+      let chunkArray     = insertArrayMap.chunkArray
+      let chunkTypeArray = insertArrayMap.chunkTypeArray
 
       let nextSibling = this.overlayNodes[nodeIndex]
-      let endIndex = chunkArray.length
+      let length = chunkArray.length
       let ii
         , span
         , chunk
         , colour
 
-      for ( ii = 0 ; ii < endIndex ; ii+= 1 ) {
+      for ( ii = 0 ; ii < length ; ii += 1 ) {
         span = document.createElement("span")
         chunk = chunkArray[ii]
         span.innerText = chunk
+        // *** ↵ characters are automatically converted to <br> ***
 
         if (chunkTypeArray[ii] === "w") {
           colour = this.corpus.getWordColour(chunk)
@@ -1093,7 +1189,8 @@
 
     /**
      * Sent by paste()
-     * 
+     *
+
      * IUpdates the Model with the data for the text that has just
      * been inserted
      *
@@ -1139,7 +1236,9 @@
 
     _mergeNodes(first, second) {
       // Don't merge with bookend nodes
-      if (this.chunkTypeArray[first] === "^") {
+      let type = this.chunkTypeArray[first]
+
+      if (type === "^") {
         return
       } else if (this.chunkTypeArray[second] === "$") {
         return
@@ -1156,6 +1255,10 @@
       this.chunkTypeArray.splice(second, 1)
       this.wordBorderArray.splice(second, 1)
       this.overlayNodes.splice(second, 1)
+
+      if (type === "w") {
+        this._recolourWordNode(first)
+      }
 
       // No renumbering because there is no change of length
     }
@@ -1182,7 +1285,7 @@
         // Arrow key: no text processing required
         this.changeInsertionRoot()
         return false
-      } 
+      }
 
       // Treat special case
       if (type === "r") {
@@ -1191,11 +1294,13 @@
       }
 
       if (this.inputContext.selectCount) {
-        this.cut() // creates an undo event
-      
+        // The selected text has already been deleted
+        this.cut("dontCutFromTextArea") // creates an undo event
+
         if (type === "b" || type === "d") {
           return true // _this.cut() did all the work needed
-        } 
+        }
+
       }
 
       this._treatInput(type, key)
@@ -1268,7 +1373,8 @@
     /**
      * Sent by updateInputContext(), itself called by
      *   a keyup or mouseup event (treatKeyUp) and setWordDetection()
-     *   
+     *
+
      * If the user has moved the insertion caret inside a different
      * word, then the acceptable, corpus (and out-of-range) lists are
      * scrolled to show the current word. If the insertion caret has
@@ -1293,10 +1399,12 @@
       if (activeNodeIndex < 0 && this.activeNodeIndex < 0) {
         // The insertion point is still outside any words. No need
         // to scroll or colour anything.
-        return 
+        return
+
       }
 
-      // Check for need to scroll: has the active word changed?      
+      // Check for need to scroll: has the active word changed?
+
       if (activeIsWord && (activeWord !== this.activeWord)) {
         this.panels.scrollTo(activeWord)
       }
@@ -1314,9 +1422,10 @@
         }
 
         this.activeNodeIndex = activeNodeIndex
-      }      
-    }
+      }
 
+
+    }
 
     _recolourWordNode(nodeIndex) {
       let node = this.overlayNodes[nodeIndex]
@@ -1332,7 +1441,6 @@
       node.style.color = null
     }
   }
-
 
   lx.InputManager = InputManager
 

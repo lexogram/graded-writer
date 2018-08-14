@@ -2,15 +2,15 @@
  *
  * Detects when the user presses Ctrl/⌘ + X, V, Z, Y or Shift-Z, and
  * broadcasts the event to registered listeners.
- * 
+ *
+
  * For undo and redo actions, you can register a single "do" listener
  * and receive the name of the action as part of the callback.
- * 
+ *
+
  * Multiple listeners are possible for each event, but there should be
  * no reason to register more than one.
 **/
-
-
 
 ;(function shortcutsLoaded(lx){
   "use strict"
@@ -18,8 +18,6 @@
   if (!lx) {
     lx = window.lexogram = {}
   }
-
-
 
   class Shortcuts {
     constructor() {
@@ -39,19 +37,31 @@
     keyDown(event) {
       if (event.ctrlKey) {
         switch (event.key) {
+          default:
+            return
+
+            // Shortcut keys that are intercepted below will
+            // prevent the default action
+
           case "v":
           case "V":
-            return this._broadcastShortcut("paste")
+            this._broadcastShortcut("paste")
+            break
           case "x":
           case "X":
-            return this._broadcastShortcut("cut")
+            this._broadcastShortcut("cut")
+            break
           case "z":
-            return this._broadcastShortcut("undo")
+            this._broadcastShortcut("undo")
+            break
           case "Z":
           case "y":
           case "Y":
-            return this._broadcastShortcut("redo")
+            this._broadcastShortcut("redo")
+            break
         }
+
+        event.preventDefault()
       }
     }
 
@@ -99,8 +109,6 @@
     }
   }
 
-
-
   lx.shortcuts = new Shortcuts()
-  
+
 })(window.lexogram)

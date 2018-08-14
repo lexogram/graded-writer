@@ -24,8 +24,7 @@
       String.prototype.splice = function(
         start = 0
       , delCount = 0
-      , newSubStr = ""
-      ) {
+      , newSubStr = "") {
         return this.slice(0, start)
              + newSubStr
              + this.slice(start + Math.abs(delCount))

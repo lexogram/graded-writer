@@ -1,0 +1,56 @@
+Cut
+Paste
+Type
+- characters
+- delete
+- backspace
+
+from beginning
+to end
+inside one span
+complete span
+start and end in different spans
+
+Undo is either cut or paste. Replacement is a cut + past sequence, and each step can be dealt with separately (for now).
+
+The model divides text into words and non-words, ending with an empty string that starts after the last character of the text. This means that the last entry in wordBorderArray is the total length of the text. An empty span with the class "end" is created for this empty string.
+
+When a selection is made, we set this.inputContext to
+
+{ before: {
+    index: <index of char in text>
+  , node:  <index of span in word/non-word sequence>
+  , char:  <index of char within node>
+  , type:  <"w" | "W" (word | non-Word)>
+  , text:  <string contained by this node>
+  }
+, after:  <as before>
+, selectCount: <integer length>
+, selection: <string selection>
+}
+
+If the selection starts at the very beginning, the before property will be 
+  { index: 0
+  , node:  -1
+  , type:  "^"
+  }
+
+If the selection starts at a type boundary, before will refer to the last character in the previous span. This makes sense when the insertion point is between two characters, because the next character typed could belong to either span, depending on its type.
+
+If there is a selection, then the next action (cut, paste, type) will start by removing the selection and collapsing the insertion point to between two characters.
+
+When we cut, we remove all the intermediate spans, and then clean up the ends. There are 4 possible cases:
+
+type border - type border
+within span - type border
+type border - within span
+within span - within span
+
+In all cases, the following procedure will work:
+  remove intermediate spans
+  trim content if necessary
+  check if end spans should merge
+
+In all cases, the before and after properties need to refer to the text that remains intact.
+
+If the selection ends at the very end, the after property will be

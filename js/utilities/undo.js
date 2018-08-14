@@ -25,6 +25,7 @@
       // Ensure that undo function is called with ignoreUndo = true
       let data = this.data.undoData.slice(0)
       data.push(true)
+      data.push(this.data.undoSelection)
 
       this.data.undoFunction.apply(null, data)
     }
@@ -34,6 +35,7 @@
       // Ensure that redo function is called with ignoreUndo = true
       let data = this.data.redoData.slice(0)
       data.push(true)
+      data.push(this.data.redoSelection)
 
       this.data.redoFunction.apply(null, data)
     }
@@ -185,6 +187,8 @@
     }
   }
 
+
+
   class UndoRedo {
     constructor(shortcutGenerator) {
 
@@ -250,7 +254,6 @@
       }
 
       return this.undoStack.length // if 0, disable undo button
-
     }
 
 
@@ -263,7 +266,6 @@
       }
 
       return this.redoStack.length // if 0, disable redo button
-
     }
 
 

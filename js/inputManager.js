@@ -224,7 +224,7 @@
      * @param      {<type>}  ignoreUndo   true if the call comes from
      *                                    an UndoAction instance
      */
-    paste(text, insertPoint, ignoreUndo) {
+    paste(text, insertPoint, ignoreUndo, selection) {
       let length = text.length
 
       // Update input textarea
@@ -245,10 +245,12 @@
           , text: text
           , redoFunction: this.paste.bind(this)
           , redoData: [text, insertPoint]
+          , redoSelection: [insertPoint, endPoint]
           , redoTip: "redoPasteTip" // "Paste _num [_num, char]"
           , redoSub: { "_num": length }
           , undoFunction: this.cut.bind(this)
           , undoData: [insertPoint, endPoint]
+          , undoSelection: [insertPoint, insertPoint]
           , undoTip: "undoPasteTip" // "Cut [_num, char] _pos"
           , undoSub: { "_num": length, "_pos": undoSub }
         }
@@ -268,10 +270,12 @@
       this._insertSpans(nodeIndex, insertArrayMap)
       this._insertArrays(nodeIndex, insertArrayMap)
 
-      this._electivelyMergeTerminalSpans(insertSpanCount)
+      this._electivelyMergeTerminalSpans(nodeIndex, insertSpanCount)
 
       //console.log(this.input.value)
-
+      if (selection) {
+        this.input.setSelectionRange(...selection)
+      }
     }
 
 
@@ -291,9 +295,8 @@
 
      * _postProcessKeyUp()
      */
-    cut(start, end) {
+    cut(start, end, ignoreUndo, selection) {
       let dontCutFromTextArea = start === "dontCutFromTextArea"
-      let ignoreUndo = !isNaN(start) // call came from UndoAction
 
       if (ignoreUndo) {
         // Create the selection manually
@@ -315,11 +318,13 @@
           , text: text
           , redoFunction: this.cut.bind(this)
           , redoData: [start, end]
+          , redoSelection: [start, start]
           , redoTip: "redoCutTip" // Cut [_num, char] _pos
           , redoSub: { "_num": end - start
                      , "_pos": start + " - " + end}
           , undoFunction: this.paste.bind(this)
           , undoData: [text, start]
+          , undoSelection: [start, end]
           , undoTip: "undoCutTip" // Restore _num [_num, char]
           , undoSub: { "_num": start - end}
         }
@@ -338,21 +343,6 @@
       let before = this.inputContext.before
       let after = this.inputContext.after
 
-      // // Move start and end into the neighbouring span if they are
-      // // at a node boundary
-      // if (before.char === this.chunkArray[before.node].length) {
-      //   before.node += 1
-      //   before.text = this.chunkArray[before.node]
-      //   before.char = 0
-      // }
-      // if (!after.char) {
-      //   after.node -= 1
-      //   after.text = this.chunkArray[after.node]
-      //   after.char = after.text.length
-      // }
-
-      //console.log("Before", this.wordBorderArray)
-
       this._removeAnyIntermediateNodes(dontCutFromTextArea)
 
       if ( before.node === after.node ) {
@@ -366,6 +356,9 @@
       this._shiftSubsequentSpans(before.node + 1, cutAdjust)
 
       //console.log("After ", this.wordBorderArray)
+      if (selection) {
+        this.input.setSelectionRange(...selection)
+      }
     }
 
 
@@ -485,11 +478,13 @@
         , text: char
         , redoFunction: this.cut.bind(this)
         , redoData: [start, start + 1]
+        , redoSelection: [start, start]
         , redoTip: "redoDeleteTip" // Delete [_num, char] _pos
         , redoSub: { "_num": 1
                    , "_pos": start}
         , undoFunction: this.paste.bind(this)
         , undoData: [char, start]
+        , undoSelection: [start + 1, start + 1]
         , undoTip: "undoDeleteTip" // Restore _num [_num, char]
         , undoSub: { "_num": 1 }
       }
@@ -524,11 +519,13 @@
       , text: char
       , redoFunction: this.cut.bind(this)
       , redoData: [start, start + 1]
+      , redoSelection: [start, start]
       , redoTip: "redoDeleteTip" // Delete [_num, char] _pos
       , redoSub: { "_num": 1
                  , "_pos": start}
       , undoFunction: this.paste.bind(this)
       , undoData: [char, start]
+      , undoSelection: [start, start]
       , undoTip: "undoDeleteTip" // Restore _num [_num, char]
       , undoSub: { "_num": 1}
       }
@@ -604,10 +601,12 @@
         , text: key
         , redoFunction: this.paste.bind(this)
         , redoData: [key, insertPoint]
+        , redoSelection: [insertPoint + 1, insertPoint + 1]
         , redoTip: "redoTypeTip"
         , redoSub: { "_num": 1 }
         , undoFunction: this.cut.bind(this)
         , undoData: [insertPoint, insertPoint + 1]
+        , undoSelection: [insertPoint, insertPoint]
         , undoTip: "undoTypeTip"
         , undoSub: { "_num": 1
                    , "_pos": insertPoint}
@@ -1214,25 +1213,21 @@
     }
 
 
-    _electivelyMergeTerminalSpans(insertedSpanCount) {
-      let before = this.inputContext.before
-
-      if (!before) {
+    _electivelyMergeTerminalSpans(startIndex, insertedSpanCount) {
+      if (!startIndex) {
         return
       }
 
-      let startNode = before.node
-      let endNode = startNode + insertedSpanCount + 1
-      let endType = this.chunkTypeArray[endNode]
+      let nextIndex = startIndex + insertedSpanCount
 
-      let  type = this.chunkTypeArray[endNode - 1]
-      if (type === endType) {
-        this._mergeNodes(endNode - 1, endNode)
+      let  type = this.chunkTypeArray[nextIndex - 1]
+      if (type === this.chunkTypeArray[nextIndex]) {
+        this._mergeNodes(nextIndex - 1, nextIndex)
       }
 
-      type = this.chunkTypeArray[startNode + 1]
-      if (type === before.type) {
-        this._mergeNodes(startNode, startNode + 1)
+      type = this.chunkTypeArray[startIndex - 1]
+      if (type === this.chunkTypeArray[startIndex]) {
+        this._mergeNodes(startIndex - 1, startIndex)
       }
     }
 

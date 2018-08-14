@@ -39,7 +39,7 @@
         switch (event.key) {
           default:
             return
-     
+
           // case "x":
           // case "X":
           //   this._broadcastShortcut("cut")

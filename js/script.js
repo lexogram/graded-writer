@@ -310,6 +310,7 @@
   }
 
 
+
   class AlphabeticalList extends WordList {
     updateList() {
       super.updateList(true)
@@ -527,6 +528,7 @@
       this.targetField.value = target
 
       if (!ignoreChange) {
+        // ignoreChange is currently always undefined
         this.inputManager.setTarget(target)
         this.panels.setTarget(target)
         this.target = target

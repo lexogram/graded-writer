@@ -33,10 +33,20 @@
 
     if (!String.prototype.toCamelCase) {
       String.prototype.toCamelCase = function() {
-        return this.replace(/-([a-z])/g, replaceMethod)
+        return this.replace(/-[a-z]/g, replaceMethod)
 
         function replaceMethod(hyphenAndLetter) {
           return hyphenAndLetter[1].toUpperCase()
+        }
+      }
+    }
+
+    if (!String.prototype.toHyphenated) {
+      String.prototype.toHyphenated = function() {
+        return this.replace(/.[A-Z]/g, replaceMethod)
+
+        function replaceMethod(camelCase) {
+          return camelCase[0] + "-" + camelCase[1].toLowerCase()
         }
       }
     }
@@ -186,8 +196,9 @@
    * @class      Panels (name)
    */
   class Panels {
-    constructor(corpus, elementIds) {
+    constructor(corpus, corpusSource, elementIds) {
       this.corpus = corpus
+      this.corpusSource = corpusSource
       this.createlists(elementIds)
       // creates;
       // * this.ordered
@@ -211,6 +222,10 @@
 
       options.id = elementIds.outOfRange
       this.outOfRange = new AlphabeticalList(options)
+
+      options.id = elementIds.corpus
+      options.source = this.corpusSource
+      this.corpusSelector = new CorpusSelector(options)
     }
 
 
@@ -225,6 +240,11 @@
       this.acceptable.scrollTo(word)
       this.outOfRange.scrollTo(word)
       this.ordered.scrollTo(word)
+    }
+
+
+    showLanguage(code) {
+      this.corpusSelector.showLanguage(code)
     }
   }
 
@@ -336,100 +356,57 @@
     } 
   }
 
-  /* TESTS */
-      // ;(function TESTS(){
 
-      //   // test_getInsertionContext()
-      //   // test_emptyContext()
 
-      //   /* For each of w, W, r and delete (44 tests)
-      //    * 
-      //    * start of text
-      //    * end of text
-      //    * boundary w + W
-      //    * boundary w + r
-      //    * boundary W + w
-      //    * boundary r + w
-      //    * boundary W + r
-      //    * boundary r + W
-      //    * middle of w
-      //    * middle of W
-      //    * middle of r
-      //    */
-        
-      //   // Deal with PASTED text
-      //   // 
-      //   // Check input when ENTER is pressed
-      //   // 
-      //   // Check BACKSPACE and DELETE (treate as single char selections)
-      //   // 
-      //   // Check arrow keys, shift, insert and other non-printing characters
+  class CorpusSelector {
+    constructor(options) {
+      this.corpus = options.corpus
+      this.source = options.source
 
-      //   function test_emptyContext(){
-      //     var cr = "\n"
-      //     textMap = { 
-      //        0: 0
-      //     }
+      let selector = "#" + options.id
+      this.element = document.querySelector(selector)
+      this.name = options.id.toCamelCase()
 
-      //     this.wordBorderArray = [0]
+      this.element.onchange = this.selectCorpus.bind(this)
+    }
 
-      //     console.log(0)
-      //     console.log(getInsertionContext(0))
-      //     console.log(getInsertionContext(0, true))
-      //   }
 
-      //   function test_getInsertionContext(){
-      //     var cr = "\n"
-      //     textMap = { 
-      //        0: "abc"
-      //     ,  3: "!?"
-      //     ,  5: cr + cr
-      //     ,  7: "def"
-      //     , 10: "."
-      //     , 11: 0
-      //     }
-      //     this.wordBorderArray = [0, 3, 5, 7, 10, 11]
+    selectCorpus(event) {
+      let value = event.target.value
+      let result = this.source.getWordList(value)
+      console.log(result)
+    }
 
-      //     // console.log(0)
-      //     // console.log(getInsertionContext(0))
-      //     // console.log(getInsertionContext(0, true))
-      //     // console.log(1)
-      //     // console.log(getInsertionContext(1))
-      //     // console.log(getInsertionContext(1, true))
-      //     // console.log(3)
-      //     // console.log(getInsertionContext(3))
-      //     // console.log(getInsertionContext(3, true))
-      //     // console.log(4)
-      //     // console.log(getInsertionContext(4))
-      //     // console.log(getInsertionContext(4, true))
-      //     // console.log(5)
-      //     // console.log(getInsertionContext(5))
-      //     // console.log(getInsertionContext(5, true))
-      //     // console.log(6)
-      //     // console.log(getInsertionContext(6))
-      //     // console.log(getInsertionContext(6, true))
-      //     // console.log(7)
-      //     // console.log(getInsertionContext(7))
-      //     // console.log(getInsertionContext(7, true))
-      //     // console.log(9)
-      //     // console.log(getInsertionContext(9))
-      //     // console.log(getInsertionContext(9, true))
-      //     // console.log(10)
-      //     // console.log(getInsertionContext(10))
-      //     // console.log(getInsertionContext(10, true))
-      //     // console.log(11)
-      //     // console.log(getInsertionContext(11))
-      //     // console.log(getInsertionContext(11, true))       
-      //   }
-      // })()
-  /* END OF TESTS */
+
+    showLanguage(code) {
+      code = code.toHyphenated()
+      this.element.value = code
+
+      if (this.element.options[0].value == "placeholder" ) {
+        this.element.remove(0)
+      }
+    }
+  }
 
 
 
   class GradedWriter {
     constructor(CorpusSource, InputManager, undoRedo) {
-      let defaults = localStorage.getItem("graded-writer")
-                  || { languageCode: "ru", target: 500 }
+      this.storageName = "graded-writer"
+
+      let defaults = localStorage.getItem(this.storageName)
+      try {
+        defaults = JSON.parse(defaults)
+      } catch {}
+
+      if (!defaults) {
+        defaults = {
+          languageCode: "ru"
+        , target: 500
+        }
+      }
+
+      this.languageCode = defaults.languageCode
       let minTarget = 250
 
       // <<< HARD-CODED ids of HTML elements 
@@ -439,12 +416,13 @@
       , ordered:    "ordered"
       , textArea:   "textArea"
       , overlay:    "overlay"
+      , corpus:     "corpus"
       }
       // HARD-CODED >>>
 
-      // The Corpus Select and Target elements needs to inform the
-      // Corpus, InputManager and Panels instances
-      // that the display is to change, so they need to be controlled
+      // The Corpus Select and Target elements needs to inform
+      // the Corpus, InputManager and Panels instances that the
+      // display is to change, so they need to be controlled
       // at this highest level. However, initialization can not
       // complete until we have corpus data
 
@@ -454,19 +432,23 @@
 
       let corpus = this.corpus = new Corpus(minTarget)
 
+      let callback = this.callbackWith.bind(this)
+      let corpusSource = new CorpusSource(callback)
+
       let panels = this.panels = new Panels( corpus
+                                           , corpusSource
                                            , elementIdMap
                                            )
-      // The inputManager needs to be able to call this.scrollTo
-      // when the insertion point moves into or out of a word.
+
+      corpusSource.getWordList(defaults.languageCode)
+
+      // The inputManager needs to be able to call
+      // this.scrollTo when the insertion point moves into or
+      // out of a word.
       this.inputManager = new InputManager( corpus
                                           , undoRedo
                                           , panels
                                           )
-
-      let callback = this.callbackWith.bind(this)
-      this.corpusSource = new CorpusSource(callback)
-      this.corpusSource.getWordList(defaults.languageCode)
     }
 
 
@@ -499,6 +481,8 @@
 
       this.targetField = document.querySelector(fieldSelector)
       this.targetField.value = defaultTarget
+
+      this.storeLocally()
 
       this.targetRange.oninput = (event) => {
         let step = this.shiftDown ? this.shiftStep : this.step
@@ -553,8 +537,26 @@
       this.targetRange.max = languageData.corpus.length / 2
       this.setTarget(this.target)
 
-      this.inputManager.load("Мне было тогда лет двадцать пять, — начал Н.Н. — давно это было. Я уехал за границу, я хотел посмотреть на мир.\n\nЯ был здоров, молод, весел, деньги у меня были — я делал, что хотел.")
-      //this.inputManager.load("Я хотел посмотреть на мир.\n\nЯ был здоров — я делал, что хотел.")
+      let code = languageData.code
+      if (code) {
+        this.languageCode = code
+        this.storeLocally()
+
+        this.panels.showLanguage(code)
+      }
+    }
+
+
+    storeLocally() {
+      let storedItems = JSON.stringify({
+        languageCode: this.languageCode
+      , target: this.target
+      })
+
+      localStorage.setItem(
+        this.storageName
+      , storedItems
+      )
     }
   }
 

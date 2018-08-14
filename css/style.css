@@ -45,7 +45,8 @@ body {
 #input p{
   position:relative;
   top: calc(43px - 100%);
-  top: calc(55px - 100%);
+
+  /*top: calc(53px - 100%);*/
   /*background-color: rgba(255,0,0,0.1);*/
   pointer-events: none;
   white-space: pre-wrap;
@@ -124,3 +125,10 @@ div#out-of-range{
   font-weight: bold;
 }
 
+
+::selection {
+  background: #b7b7ff; /* WebKit/Blink Browsers */
+}
+::-moz-selection {
+  background: #b7b7ff; /* Gecko Browsers */
+}

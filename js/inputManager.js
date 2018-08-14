@@ -196,6 +196,8 @@
       }
 
       this.paste(text, start, false)
+
+      event.preventDefault()
     }
 
 
@@ -352,6 +354,10 @@
       } else {
         this._adjoinBeforeAndAfterCut()
       }
+
+      // The selection has been cut
+      this.inputContext.selection = ""
+      this.inputContext.selectCount = 0
 
       this._shiftSubsequentSpans(before.node + 1, cutAdjust)
 
@@ -953,10 +959,10 @@
 
       // Adjust inputContext now that the selection is removed
       this.inputContext.after = JSON.parse(
-                                  JSON.stringify(
-                                    this.inputContext.before
-                                  )
-                                )
+        JSON.stringify(
+          this.inputContext.before
+        )
+      )
     }
 
 
@@ -981,6 +987,14 @@
       this.wordBorderArray.splice(nodeIndex, 1)
       node = this.overlayNodes.splice(nodeIndex, 1)[0]
       this.overlay.removeChild(node)
+
+      // Adjust inputContext now that the selection is removed
+      this.inputContext.before.text = text
+      this.inputContext.after = JSON.parse(
+        JSON.stringify(
+          this.inputContext.before
+        )
+      )
     }
 
 
@@ -993,12 +1007,17 @@
       let text = before.text.substring(0, before.char)
       this.overlayNodes[nodeIndex].innerText = text
       this.chunkArray[nodeIndex] = text
+      before.text = text
+      before.char = text.length
 
       // Trim after
       nodeIndex += 1
       text = after.text.substring(after.char)
       this.overlayNodes[nodeIndex].innerText = text
       this.chunkArray[nodeIndex] = text
+      after.text = text
+      after.char = 0
+      after.index = before.index + text.length
     }
 
 

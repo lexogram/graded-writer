@@ -39,18 +39,19 @@
         switch (event.key) {
           default:
             return
+     
+          // case "x":
+          // case "X":
+          //   this._broadcastShortcut("cut")
+          //   return
 
-            // Shortcut keys that are intercepted below will
-            // prevent the default action
+          // Shortcut keys that are intercepted below will
+          // prevent the default action
 
-          case "v":
-          case "V":
-            this._broadcastShortcut("paste")
-            break
-          case "x":
-          case "X":
-            this._broadcastShortcut("cut")
-            break
+          // case "v":
+          // case "V":
+          //   this._broadcastShortcut("paste")
+          //   break
           case "z":
             this._broadcastShortcut("undo")
             break
@@ -105,6 +106,7 @@
           listeners.forEach((listener) => {
             listener(action)
           })
+        break
       }
     }
   }

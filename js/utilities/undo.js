@@ -208,7 +208,7 @@
     // PUBLIC METHODS // PUBLIC METHODS // PUBLIC METHODS //
 
     track(data) {
-      console.log(data)
+      //console.log(data)
 
       let type = data.type
       let result

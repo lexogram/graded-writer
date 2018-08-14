@@ -326,12 +326,12 @@
 
         this.undoRedo.track(undoData)
 
-        console.log("CUT", {
-          "text": text
-        , "start": this.inputContext.before.index
-        , "end": this.inputContext.after.index
-        , "ignoreUndo": ignoreUndo
-        })
+        // console.log("CUT", {
+        //   "text": text
+        // , "start": this.inputContext.before.index
+        // , "end": this.inputContext.after.index
+        // , "ignoreUndo": ignoreUndo
+        // })
       }
 
       let cutAdjust = start - end
@@ -601,16 +601,16 @@
       let insertPoint = after.index
       let undoData = {
         type: "type"
-      , text: key
-      , redoFunction: this.paste.bind(this)
-      , redoData: [key, insertPoint]
-      , redoTip: "redoTypeTip"
-      , redoSub: { "_num": 1 }
-      , undoFunction: this.cut.bind(this)
-      , undoData: [insertPoint, insertPoint + 1]
-      , undoTip: "undoTypeTip"
-      , undoSub: { "_num": 1
-                 , "_pos": insertPoint}
+        , text: key
+        , redoFunction: this.paste.bind(this)
+        , redoData: [key, insertPoint]
+        , redoTip: "redoTypeTip"
+        , redoSub: { "_num": 1 }
+        , undoFunction: this.cut.bind(this)
+        , undoData: [insertPoint, insertPoint + 1]
+        , undoTip: "undoTypeTip"
+        , undoSub: { "_num": 1
+                   , "_pos": insertPoint}
       }
 
       this.undoRedo.track(undoData)
@@ -940,9 +940,11 @@
       // Update model
       let chunk = this.chunkArray[nodeIndex].splice(start, adjust)
       this.chunkArray[nodeIndex] = chunk
+      this.inputContext.before.text = chunk
 
       // Update view
       this.overlayNodes[nodeIndex].innerText = chunk
+      //this._recolourWordNode(nodeIndex)
 
       if (!dontCutFromTextArea) {
         // Update textarea
@@ -1055,6 +1057,7 @@
         start = index + chunk.length
       }
 
+      this.regex.lastIndex = 0
       while (result = this.regex.exec(chunk)) {
         // [ <first match>
         // , index: <non-negative integer>
